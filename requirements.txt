@@ -1,0 +1,6 @@
+python-chess>=1.10
+# Picamera2 from apt on the Pi is built against numpy 1.x
+numpy<2
+opencv-python>=4.6
+fastapi>=0.110
+uvicorn[standard]>=0.29

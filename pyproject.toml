@@ -1,0 +1,12 @@
+[project]
+name = "checkmate"
+version = "0.1.0"
+description = "CheckMate smart chessboard (COSI 142)"
+requires-python = ">=3.10"
+
+[tool.setuptools]
+packages = ["checkmate"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

@@ -1,0 +1,28 @@
+{
+  "camera": {
+    "backend": "picamera2",
+    "device_index": 0,
+    "width": 1280,
+    "height": 720,
+    "calibration_file": "calibration.json",
+    "stable_time_s": 0.5,
+    "manual_corners": null,
+    "aruco_dict": "DICT_4X4_50"
+  },
+  "engine": {
+    "stockfish_path": "/usr/games/stockfish",
+    "threads": 2,
+    "hash_mb": 64,
+    "think_time_s": 1.0
+  },
+  "led": {
+    "port": "/dev/serial/by-id/usb-MicroPython_Board_in_FS_mode_*-if00",
+    "reply_timeout_s": 0.5,
+    "brightness": 40
+  },
+  "server": {
+    "host": "127.0.0.1",
+    "port": 8000,
+    "static_dir": "ui/dist"
+  }
+}

@@ -1,0 +1,15 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+*.egg-info/
+
+# Local camera calibration (depends on each physical setup)
+calibration.json
+
+# Frontend
+ui/node_modules/
+
+# Generated ArUco markers
+markers/
