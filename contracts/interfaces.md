@@ -549,7 +549,7 @@ Use `test` to check the mapping: if a1, h1, h8, a8 light up in the right corners
 - In `main.py` call `micropython.kbd_intr(-1)`, so a `0x03` byte in the data doesn't stop the program.
 - Read input with `select.poll()` on `sys.stdin`, then `sys.stdin.read(1)` one character at a time. A known MicroPython bug makes `read()` with no size block.
 - WS2812 (NeoPixel): `neopixel.NeoPixel(Pin(n), 256)`, `np[i] = (r, g, b)`, then `np.write()`. Writing 256 LEDs takes about 8 ms, which is fine for blinking at 2 Hz.
-- Power: each WS2812 draws up to ~60 mA at full white, so 256 LEDs could draw up to **~15 A**. In practice at most ~20 squares (80 LEDs) are lit at once. Even so, use an **external 5 V supply** (at least 5 V 4 A, shared ground with the Pico), never the Pico's own 5 V. Put a level shifter on the data line, and **cap brightness in firmware** (e.g. max 40%).
+- Power: each WS2812 draws up to ~60 mA at full white, so 256 LEDs could draw up to **~15 A**. In practice at most ~32 squares (128 LEDs) are lit at once (e.g. `error` on every wrong square during setup), about 3 A with brightness capped at 40%. Use an **external 5 V supply** (at least 5 V 4 A, shared ground with the Pico), never the Pico's own 5 V. Put a level shifter on the data line, and **cap brightness in firmware** (e.g. max 40%).
 - `mpremote` and the main program can't hold the serial port at the same time; stop main before uploading firmware.
 
 ---
