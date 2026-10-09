@@ -203,14 +203,22 @@ Each module is a package under `checkmate/`; import from the package (`from chec
 checkmate/
 ├── config.py            load_config()
 ├── errors.py            err(code, message), shared error result
-├── camera/              Harry: Camera, FakeCamera, detect_move, occupancy_from_fen
+├── camera/              Harry: camera + move detection
+│   ├── occupancy.py     occupancy_from_fen, START_FEN
+│   ├── move_detection.py  detect_move
+│   ├── vision.py        warp, per-square features, classification, calibration fit
+│   ├── aruco.py         find board corners from ArUco markers
+│   ├── sources.py       Picamera2 / USB webcam frame sources
+│   ├── camera.py        Camera (background thread, stability, calibration file)
+│   └── fake.py          FakeCamera
 ├── engine/              Joel: GameEngine, FakeGameEngine
 ├── led/                 Hsin-Chen: LedController, FakeLedController
 ├── server/              FastAPI app (app.py) and /api routes (api.py)
 └── game/                game loop (loop.py), not implemented yet
 pico/main.py             Hsin-Chen: Pico LED firmware
 ui/                      Jayden: frontend, built into ui/dist/
-scripts/<module>/        manual tools (not used at runtime)
+scripts/<module>/        manual tools, e.g. scripts/camera/preview.py (press c to calibrate, q to quit)
+                         and scripts/camera/make_aruco_markers.py (id 0 → a1, 1 → h1, 2 → h8, 3 → a8 corner)
 tests/<module>/          pytest tests
 contracts/interfaces.md  interface contracts between modules
 config.json              one section per module
