@@ -13,7 +13,7 @@
 ## 2. Abstract
 CheckMate is a smart physical chessboard designed to combine traditional over-the-board chess with modern embedded technology. The project addresses the gap between the tactile experience of playing with physical chess pieces and the interactive features normally available only through digital chess platforms. A camera mounted above the board will monitor the position of the physical pieces and convert the board image into a top-down 8×8 grid. By comparing the board before and after a move, the system will detect and validate player moves.
 
-The system will use Stockfish as its chess engine for legal move management, computer play, and adjustable difficulty. An 8×8 LED matrix will provide visual guidance by identifying the source and destination squares for the computer's moves, which the player will physically execute. A touchscreen will provide game setup, practice modes, and move feedback. The project will also explore an AI-based conversational trainer that can provide move analysis, explanations, advice, and interactive assistance. A 3D-printed enclosure and camera stand will integrate the hardware into a complete prototype. The expected outcome is a playable smart chessboard that supports both competitive play and interactive learning.
+The system will use Stockfish as its chess engine for legal move management, computer play, and adjustable difficulty. An 16×16 LED matrix will provide visual guidance by identifying the source and destination squares for the computer's moves, which the player will physically execute. A touchscreen will provide game setup, practice modes, and move feedback. The project will also explore an AI-based conversational trainer that can provide move analysis, explanations, advice, and interactive assistance. A 3D-printed enclosure and camera stand will integrate the hardware into a complete prototype. The expected outcome is a playable smart chessboard that supports both competitive play and interactive learning.
 
 ## 3. Objectives
 The main objectives of this project are:
@@ -22,7 +22,7 @@ The main objectives of this project are:
 - Convert the camera view into a top-down 8×8 representation of the board.
 - Detect and validate moves by comparing the board state before and after each move.
 - Integrate Stockfish for chess-engine functionality, legal moves, and adjustable difficulty/Elo.
-- Synchronize an 8×8 LED matrix with the game state to show the source and destination squares of computer moves.
+- Synchronize an 16×16 LED matrix with the game state to show the source and destination squares of computer moves.
 - Create a touchscreen interface for game setup, difficulty selection, practice modes, and move feedback.
 - Implement training features such as puzzles, hints, move ratings, and engine-based analysis.
 - Explore an AI conversational trainer that can explain moves and answer player questions.
@@ -38,7 +38,7 @@ An overhead camera will continuously monitor all 64 squares. The camera image wi
 
 Stockfish will provide the chess-engine portion of the system. It will support game management, legal move handling, computer move generation, and customizable difficulty through adjustable Elo. This allows CheckMate to support competitive play against a computer opponent at different skill levels.
 
-For computer turns, an 8×8 LED matrix associated with the board will provide visual guidance. The LEDs will identify the source and destination squares of the move selected by the engine. The human player will physically move the computer's piece, and the overhead camera will confirm that the requested move was completed correctly before play continues.
+For computer turns, an 16×16 LED matrix associated with the board will provide visual guidance. The LEDs will identify the source and destination squares of the move selected by the engine. The human player will physically move the computer's piece, and the overhead camera will confirm that the requested move was completed correctly before play continues.
 
 A touchscreen will act as the primary user interface. During game setup, the player will be able to choose a bot difficulty and see whose turn it is. Practice modes will include ideas such as mate-in-two puzzles, training with hints, and move feedback. Engine analysis can be used to review the previous move and show a better option.
 
@@ -50,13 +50,13 @@ The physical system will be housed in a 3D-printed enclosure that hides the wiri
 | Component | Description | Quantity |
 |---------|-------------|----------|
 | Raspberry Pi Pico | Embedded controller for the physical system | 1 |
-| 8×8 LED Matrix | Provides visual guidance for source and destination squares | 1 |
+| 16×16 LED Matrix (WS2812) | Provides visual guidance for source and destination squares; 2×2 LEDs under each square | 1 |
 | Touchscreen | User interface for game setup, practice modes, and move feedback | 1 |
 | Camera | Monitors the physical chessboard from above for board-state and move detection | 1 |
 | 3D-Printed Container / Enclosure | Houses the board electronics and hides wiring while keeping components accessible | 1 |
 | 3D-Printed Camera Stand | Holds the camera steadily above all 64 squares | 1 |
 
-- **Schematic / physical arrangement:** The camera will be fixed above the chessboard. The 8×8 LED matrix will be synchronized with the board to indicate moves. The touchscreen will be positioned beside the board for game controls and training feedback. Wiring and electronics will be contained beneath the board in the 3D-printed enclosure.
+- **Schematic / physical arrangement:** The camera will be fixed above the chessboard. The 16×16 LED matrix will be synchronized with the board to indicate moves. The touchscreen will be positioned beside the board for game controls and training feedback. Wiring and electronics will be contained beneath the board in the 3D-printed enclosure.
 
 ### 4.3 Software Components
 - **Libraries / Frameworks:**
@@ -92,7 +92,7 @@ The physical system will be housed in a 3D-printed enclosure that hides the wiri
 
 2. **Hardware setup**
    - Mount and test the overhead camera.
-   - Set up the 8×8 LED matrix and touchscreen.
+   - Set up the 16×16 LED matrix and touchscreen.
    - Measure the physical components and chessboard.
    - Design the board enclosure and camera stand in CAD.
    - Print and assemble the enclosure after fit and camera-view testing.

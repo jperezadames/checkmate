@@ -37,7 +37,7 @@ If you need to change anything here (a field name, a function, a message), tell 
    Camera (Harry)              GameEngine (Joel)          LedController (Hsin-Chen)
    OpenCV, Picamera2           python-chess +                    │ USB serial, JSON lines
                                /usr/games/stockfish              ▼
-                                                           Pico firmware → 8×8 LEDs
+                                                           Pico firmware → 16×16 LEDs
 ```
 
 Rules:
@@ -534,7 +534,13 @@ What main sends for the computer's move (`m = engine.get_engine_move()`):
 On the Pi, any Pico error becomes `{"ok": false, "error": "LED_REJECTED", "message": "<pico error>: <pico message>"}`.
 
 **Square → LED index mapping**
-The **Pico firmware** converts square names to LED indexes (wiring start corner, serpentine or not, rotation relative to the board). The Pi never sends LED indexes. Use `test` to check the mapping.
+The LED matrix is **16×16 = 256 LEDs**, under an 8×8 chessboard, so **each square is a 2×2 block of 4 LEDs**. Lighting a square means lighting all 4 of its LEDs with the same color.
+
+The **Pico firmware** converts square names to LED indexes. The Pi only ever sends square names, never LED indexes. The conversion has two steps:
+1. Square → 4 matrix cells: with `file` a=0 … h=7 and `rank` 1=0 … 8=7, the square covers matrix columns `2*file`, `2*file+1` and rows `2*rank`, `2*rank+1`. Here column 0 is the a-file side and row 0 is the rank-1 side.
+2. Matrix cell `(col, row)` → LED index 0–255: depends on the wiring (which corner the strip starts in, whether it runs serpentine/zigzag, and how the matrix is rotated relative to the board). Hsin-Chen defines this in **one** function in the firmware.
+
+Use `test` to check the mapping: if a1, h1, h8, a8 light up in the right corners, the whole mapping is correct.
 
 ### 4.4 Fake LED
 `FakeLedController` has the same methods, always returns `{"ok": true}`, and prints the board as an 8×8 text grid (rank 8 on top) with role letters, so teammates can see what would be lit.
@@ -542,7 +548,8 @@ The **Pico firmware** converts square names to LED indexes (wiring start corner,
 ### 4.5 Technical notes (from official docs)
 - In `main.py` call `micropython.kbd_intr(-1)`, so a `0x03` byte in the data doesn't stop the program.
 - Read input with `select.poll()` on `sys.stdin`, then `sys.stdin.read(1)` one character at a time. A known MicroPython bug makes `read()` with no size block.
-- WS2812 (NeoPixel): `neopixel.NeoPixel(Pin(n), 64)`, `np[i] = (r, g, b)`, then `np.write()`. 64 LEDs can draw up to ~3.8 A at full white: use an **external 5 V supply** (shared ground with the Pico), a level shifter on the data line, and cap brightness in firmware.
+- WS2812 (NeoPixel): `neopixel.NeoPixel(Pin(n), 256)`, `np[i] = (r, g, b)`, then `np.write()`. Writing 256 LEDs takes about 8 ms, which is fine for blinking at 2 Hz.
+- Power: each WS2812 draws up to ~60 mA at full white, so 256 LEDs could draw up to **~15 A**. In practice at most ~32 squares (128 LEDs) are lit at once (e.g. `error` on every wrong square during setup), about 3 A with brightness capped at 40%. Use an **external 5 V supply** (at least 5 V 4 A, shared ground with the Pico), never the Pico's own 5 V. Put a level shifter on the data line, and **cap brightness in firmware** (e.g. max 40%).
 - `mpremote` and the main program can't hold the serial port at the same time; stop main before uploading firmware.
 
 ---
