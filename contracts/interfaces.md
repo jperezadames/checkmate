@@ -12,12 +12,12 @@ If you need to change anything here (a field name, a function, a message), tell 
 
 | Module | Owner | Runs on | Language | Delivers |
 |---|---|---|---|---|
-| Camera + move detection | Harry | Raspberry Pi | Python 3 + OpenCV | `checkmate/camera.py`: class `Camera`, functions `detect_move`, `occupancy_from_fen` |
-| Engine / game state | Joel | Raspberry Pi | Python 3 + python-chess + Stockfish | `checkmate/engine.py`: class `GameEngine` |
-| LED (Pi side) | Hsin-Chen | Raspberry Pi | Python 3 + pyserial | `checkmate/led.py`: class `LedController` |
+| Camera + move detection | Harry | Raspberry Pi | Python 3 + OpenCV | `checkmate/camera/`: class `Camera`, `FakeCamera`, functions `detect_move`, `occupancy_from_fen` |
+| Engine / game state | Joel | Raspberry Pi | Python 3 + python-chess + Stockfish | `checkmate/engine/`: class `GameEngine`, `FakeGameEngine` |
+| LED (Pi side) | Hsin-Chen | Raspberry Pi | Python 3 + pyserial | `checkmate/led/`: class `LedController`, `FakeLedController` |
 | LED (firmware) | Hsin-Chen | Pico | MicroPython | `pico/main.py` |
 | UI | Jayden | Chromium (kiosk) on the touchscreen | HTML/JS or TS (any frontend framework) | built static files in `ui/dist/`, talking to the backend over the API in section 5 |
-| Backend server + main loop | everyone | Raspberry Pi | Python 3 + **FastAPI** + uvicorn | `checkmate/server.py` (FastAPI app), `checkmate/main.py` (game loop) |
+| Backend server + main loop | everyone | Raspberry Pi | Python 3 + **FastAPI** + uvicorn | `checkmate/server/` (FastAPI app), `checkmate/game/` (game loop) |
 
 ### 0.2 How the pieces connect
 
@@ -27,8 +27,8 @@ If you need to change anything here (a field name, a function, a message), tell 
                          │ HTTP + WebSocket, http://127.0.0.1:8000  (section 5)
                          ▼
                          ┌──────────────────────────────┐
-                         │  server.py (FastAPI/uvicorn) │
-                         │  main.py (game loop thread)  │
+                         │  server/ (FastAPI/uvicorn)   │
+                         │  game/ (game loop thread)    │
                          │  holds phase, calls modules  │
                          └──┬──────────┬──────────┬─────┘
              function calls │          │          │ function calls
@@ -41,7 +41,7 @@ If you need to change anything here (a field name, a function, a message), tell 
 ```
 
 Rules:
-1. **Modules never call each other.** Only `main.py` calls them and passes data between them. For example, the camera never asks the engine for the FEN; main passes the FEN in.
+1. **Modules never call each other.** Only the game loop (`checkmate/game/`, called "main" in this file) calls them and passes data between them. For example, the camera never asks the engine for the FEN; main passes the FEN in.
 2. **Everything that crosses a boundary is a plain `dict` / `list` / `str` / `int` / `float` / `bool` / `None`**, so it is JSON-serializable. No custom classes, no `chess.Board`, no numpy arrays.
 3. **Module functions do not raise exceptions to main.** They return `{"ok": false, "error": CODE, "message": "..."}` instead (section 1.5). The only exception is `__init__`, which may raise if the config is invalid.
 4. The engine module holds the **only** game state (`chess.Board`). The camera, LED and UI never keep their own copy of the position.
@@ -55,6 +55,18 @@ cam.start()  -> {"ok": True} | error    # open camera / start Stockfish / open s
 cam.close()  -> None                    # release hardware; safe to call twice
 ```
 `GameEngine`, `LedController` follow the same `__init__(config) / start() / close()` pattern.
+
+### 0.4 Code layout
+
+Each Python module is a **package** (a folder) under `checkmate/`, split into small files by job. Its `__init__.py` re-exports the public names, so other code only imports from the package and never from the files inside it:
+```python
+from checkmate.camera import Camera, FakeCamera, detect_move, occupancy_from_fen
+from checkmate.engine import GameEngine, FakeGameEngine
+from checkmate.led import LedController, FakeLedController
+```
+- The fake for each module lives in that package as `fake.py`.
+- Shared helpers: `checkmate/config.py` (`load_config()`), `checkmate/errors.py` (`err(code, message)` for section 1.5).
+- Tests go in `tests/<module>/`, helper scripts (manual tools, not used at runtime) in `scripts/<module>/`.
 
 ---
 
@@ -539,7 +551,7 @@ The **Pico firmware** converts square names to LED indexes (wiring start corner,
 
 The UI **shows state and sends commands**. It never decides anything about the game itself: no legal-move checking, no clock, no game state of its own.
 
-### 5.1 Backend: FastAPI server (`checkmate/server.py`)
+### 5.1 Backend: FastAPI server (`checkmate/server/`)
 
 The backend is a **FastAPI** app run by uvicorn on the Pi:
 ```

@@ -1,0 +1,1 @@
+"""CheckMate smart chessboard backend."""

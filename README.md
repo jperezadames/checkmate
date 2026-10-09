@@ -151,3 +151,67 @@ The project is structured so that its major components can be developed in paral
 2. Vatsalparsaniya, *Realtime-OpenCV-Chess*: https://github.com/Vatsalparsaniya/Realtime-OpenCV-Chess
 3. Stockfish Chess Engine: https://stockfishchess.org/
 4. *Minimal Chess Set* on Printables: https://www.printables.com/model/878156-minimal-chess-set
+
+## Development Setup
+
+Python 3.10+. Dependencies are listed in `requirements.txt` (runtime) and `requirements-dev.txt` (runtime + tests). Use either pip or [uv](https://docs.astral.sh/uv/).
+
+### Laptop
+
+```bash
+# pip
+python3 -m venv .venv
+.venv/bin/pip install -r requirements-dev.txt
+
+# or uv
+uv venv
+uv pip install -r requirements-dev.txt
+```
+
+### Raspberry Pi
+
+The Pi camera is used through Picamera2, which must come from apt. Create the venv with `--system-site-packages` so it stays visible (`numpy<2` in `requirements.txt` keeps it compatible).
+
+```bash
+sudo apt install python3-picamera2 stockfish
+
+# pip
+python3 -m venv --system-site-packages .venv
+.venv/bin/pip install -r requirements.txt
+
+# or uv
+uv venv --system-site-packages
+uv pip install -r requirements.txt
+```
+
+### Run
+
+```bash
+# tests
+.venv/bin/pytest            # or: uv run pytest
+
+# backend server (http://127.0.0.1:8000)
+.venv/bin/uvicorn checkmate.server:app --host 127.0.0.1 --port 8000
+# or: uv run uvicorn checkmate.server:app --host 127.0.0.1 --port 8000
+```
+
+### Layout
+
+Each module is a package under `checkmate/`; import from the package (`from checkmate.camera import Camera`), not from the files inside it. See `contracts/interfaces.md` section 0.4.
+
+```
+checkmate/
+├── config.py            load_config()
+├── errors.py            err(code, message), shared error result
+├── camera/              Harry: Camera, FakeCamera, detect_move, occupancy_from_fen
+├── engine/              Joel: GameEngine, FakeGameEngine
+├── led/                 Hsin-Chen: LedController, FakeLedController
+├── server/              FastAPI app (app.py) and /api routes (api.py)
+└── game/                game loop (loop.py), not implemented yet
+pico/main.py             Hsin-Chen: Pico LED firmware
+ui/                      Jayden: frontend, built into ui/dist/
+scripts/<module>/        manual tools (not used at runtime)
+tests/<module>/          pytest tests
+contracts/interfaces.md  interface contracts between modules
+config.json              one section per module
+```
