@@ -4,6 +4,17 @@ import time
 
 import cv2
 
+BACKENDS = ("picamera2", "v4l2")
+
+# Seconds of auto exposure / white balance before they are locked (section 2.8).
+WARMUP_S = 1.0
+
+
+def open_source(backend, device_index, width, height):
+    if backend == "picamera2":
+        return Picamera2Source(width, height)
+    return V4l2Source(device_index, width, height)
+
 
 class Picamera2Source:
     def __init__(self, width, height):
@@ -14,7 +25,7 @@ class Picamera2Source:
         cfg = self.cam.create_video_configuration(main={"size": (width, height), "format": "RGB888"})
         self.cam.configure(cfg)
         self.cam.start()
-        time.sleep(1.0)  # let auto exposure / white balance settle
+        time.sleep(WARMUP_S)
         self.cam.set_controls({"AeEnable": False, "AwbEnable": False})
 
     def read(self):
@@ -32,6 +43,24 @@ class V4l2Source:
             raise RuntimeError(f"cannot open /dev/video{device_index}")
         self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
         self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
+        self._lock_exposure()
+
+    def _lock_exposure(self):
+        """Let auto exposure / white balance settle, then keep their current values (section 2.8).
+
+        Best effort: a webcam without these controls ignores the calls.
+        """
+        end = time.monotonic() + WARMUP_S
+        while time.monotonic() < end:
+            self.cap.read()
+        exposure = self.cap.get(cv2.CAP_PROP_EXPOSURE)
+        wb_temperature = self.cap.get(cv2.CAP_PROP_WB_TEMPERATURE)
+        self.cap.set(cv2.CAP_PROP_AUTO_EXPOSURE, 1)  # V4L2 value 1 = manual exposure
+        if exposure > 0:
+            self.cap.set(cv2.CAP_PROP_EXPOSURE, exposure)
+        self.cap.set(cv2.CAP_PROP_AUTO_WB, 0)
+        if wb_temperature > 0:
+            self.cap.set(cv2.CAP_PROP_WB_TEMPERATURE, wb_temperature)
 
     def read(self):
         ok, frame = self.cap.read()

@@ -12,10 +12,14 @@ def detect_move(fen: str, occupancy: str) -> dict:
     """Work out which legal move from `fen` produces `occupancy`."""
     if not isinstance(fen, str):
         return err("BAD_REQUEST", "fen must be a string")
+    if len(fen.split()) != 6:
+        return err("BAD_REQUEST", "fen must be a full FEN (6 fields)")
     try:
         board = chess.Board(fen)
     except ValueError as e:
         return err("BAD_REQUEST", f"bad FEN: {e}")
+    if not board.is_valid():
+        return err("BAD_REQUEST", "fen is not a legal chess position")
     if not valid_occupancy(occupancy):
         return err("BAD_REQUEST", "occupancy must be 64 characters of W, B or .")
 
@@ -33,15 +37,15 @@ def detect_move(fen: str, occupancy: str) -> dict:
     if len(matches) == 1:
         return {"ok": True, "status": "move", "move": matches[0].uci()}
 
-    if matches and all(m.promotion for m in matches) and \
-            len({(m.from_square, m.to_square) for m in matches}) == 1:
-        m = matches[0]
-        candidates = sorted((x.uci() for x in matches), key=lambda u: PROMOTION_ORDER.index(u[4]))
+    if matches and all(move.promotion for move in matches) and \
+            len({(move.from_square, move.to_square) for move in matches}) == 1:
+        first = matches[0]
+        candidates = sorted((move.uci() for move in matches), key=lambda uci: PROMOTION_ORDER.index(uci[4]))
         return {
             "ok": True,
             "status": "promotion",
-            "from": chess.square_name(m.from_square),
-            "to": chess.square_name(m.to_square),
+            "from": chess.square_name(first.from_square),
+            "to": chess.square_name(first.to_square),
             "candidates": candidates,
         }
 

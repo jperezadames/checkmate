@@ -1,9 +1,10 @@
-"""Draw a synthetic chessboard photo for tests: board in perspective, optional ArUco markers."""
+"""Draw a synthetic chessboard photo for tests: board in perspective, optional ArUco markers and hand."""
 
 import cv2
 import numpy as np
 
 from checkmate.camera import START_FEN, occupancy_from_fen
+from checkmate.camera.aruco import ARUCO_IDS, marker_image
 
 BOARD = 640
 SQ = BOARD // 8
@@ -14,6 +15,7 @@ FRAME_W, FRAME_H = 1280, 720
 
 LIGHT = (181, 217, 240)
 DARK = (99, 136, 181)
+SKIN = (140, 170, 220)
 
 # Where the canvas corners land in the camera frame (a slightly tilted view).
 CANVAS_IN_FRAME = np.float32([[300, 20], [990, 50], [1060, 700], [230, 690]])  # TL, TR, BR, BL
@@ -33,7 +35,8 @@ def expected_corners():
     return cv2.perspectiveTransform(pts, _canvas_to_frame_matrix()).reshape(4, 2).tolist()
 
 
-def render(occupancy, markers=True):
+def render(occupancy, markers=True, hand=False):
+    """Camera frame of the board. `hand` adds a hand-sized blob over e2-e3 (about 1.5 squares)."""
     canvas = np.full((CANVAS, CANVAS, 3), 255, np.uint8)
     for i in range(64):
         file, rank = i % 8, i // 8
@@ -47,12 +50,17 @@ def render(occupancy, markers=True):
         elif occupancy[i] == "B":
             cv2.circle(canvas, center, 28, (30, 30, 30), -1)
 
+    if hand:
+        center = (MARGIN + 4 * SQ + SQ // 2, MARGIN + 6 * SQ)  # e-file, between ranks 2 and 3
+        cv2.ellipse(canvas, center, (SQ // 2, SQ * 3 // 4), 0, 0, 360, SKIN, -1)
+
     if markers:
-        dictionary = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_4X4_50)
         lo, hi = MARGIN - MARKER, MARGIN + BOARD
-        # id 0 a1 (bottom-left), 1 h1 (bottom-right), 2 h8 (top-right), 3 a8 (top-left)
-        for marker_id, (x, y) in enumerate([(lo, hi), (hi, hi), (hi, lo), (lo, lo)]):
-            img = cv2.aruco.generateImageMarker(dictionary, marker_id, MARKER)
+        # a1 bottom-left, h1 bottom-right, h8 top-right, a8 top-left
+        positions = {"a1": (lo, hi), "h1": (hi, hi), "h8": (hi, lo), "a8": (lo, lo)}
+        for corner, marker_id in ARUCO_IDS.items():
+            x, y = positions[corner]
+            img = marker_image(marker_id, MARKER)
             canvas[y:y + MARKER, x:x + MARKER] = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
 
     return cv2.warpPerspective(canvas, _canvas_to_frame_matrix(), (FRAME_W, FRAME_H),

@@ -1,72 +1,83 @@
 """Camera class (contracts/interfaces.md sections 2.1 - 2.4)."""
 
-import json
-import os
 import threading
 import time
 
 import cv2
-import numpy as np
 
 from checkmate.camera import sources
 from checkmate.camera.aruco import find_aruco_corners
+from checkmate.camera.calibration import load_calibration, save_calibration
+from checkmate.camera.motion import MotionDetector
 from checkmate.camera.vision import analyze_frame, calibrate_from_frame, draw_debug
+from checkmate.config import REPO_ROOT
 from checkmate.errors import err
 
-# Mean absolute grayscale difference (0-255) between frames that counts as motion.
-MOTION_THRESHOLD = 4.0
+# No new frame for this long means the camera stopped: get_observation() returns
+# CAMERA_NOT_READY, and start() reopens the camera (section 6, "retry").
+FRAME_TIMEOUT_S = 2.0
+
+
+def _frame_size(frame):
+    h, w = frame.shape[:2]
+    return [w, h]
+
+
+def _stale(ts):
+    return time.monotonic() - ts > FRAME_TIMEOUT_S
 
 
 class Camera:
     def __init__(self, config: dict):
-        if config.get("backend") not in ("picamera2", "v4l2"):
-            raise ValueError(f"camera.backend must be 'picamera2' or 'v4l2', got {config.get('backend')!r}")
+        if config.get("backend") not in sources.BACKENDS:
+            raise ValueError(f"camera.backend must be one of {sources.BACKENDS}, got {config.get('backend')!r}")
         self.backend = config["backend"]
         self.device_index = int(config.get("device_index", 0))
         self.width = int(config.get("width", 1280))
         self.height = int(config.get("height", 720))
-        self.calibration_file = config.get("calibration_file", "calibration.json")
-        self.stable_time_s = float(config.get("stable_time_s", 0.5))
+        # A relative path is relative to the repo root, like config.json.
+        self.calibration_file = REPO_ROOT / config.get("calibration_file", "calibration.json")
         self.manual_corners = config.get("manual_corners")
-        self.aruco_dict = config.get("aruco_dict", "DICT_4X4_50")
         if self.manual_corners is not None and len(self.manual_corners) != 4:
             raise ValueError("camera.manual_corners must be 4 [x, y] points: a1, h1, h8, a8")
 
         self._lock = threading.Lock()
+        self._motion = MotionDetector(float(config.get("stable_time_s", 0.5)))
         self._source = None
         self._thread = None
-        self._running = False
+        self._stop = None
         self._calib = None
         self._frame = None
+        self._frame_ts = 0.0
         self._warped = None
         self._obs = None
         self._seq = 0
-        self._prev_small = None
-        self._last_motion = 0.0
 
     # -- lifecycle --------------------------------------------------------
 
     def start(self) -> dict:
-        try:
-            if self._running:
-                return {"ok": True, "calibrated": self._calib is not None}
-            if self.backend == "picamera2":
-                self._source = sources.Picamera2Source(self.width, self.height)
-            else:
-                self._source = sources.V4l2Source(self.device_index, self.width, self.height)
-            self._calib = self._load_calibration()
-            self._last_motion = time.monotonic()
-            self._running = True
-            self._thread = threading.Thread(target=self._run, name="camera", daemon=True)
-            self._thread.start()
+        if self._thread is not None and self._thread.is_alive() and not _stale(self._frame_ts):
             return {"ok": True, "calibrated": self._calib is not None}
+        # Not started yet, or the camera stopped sending frames: (re)open it.
+        self.close()
+        try:
+            self._source = sources.open_source(self.backend, self.device_index, self.width, self.height)
         except Exception as e:
-            self._release_source()
             return err("CAMERA_NOT_READY", f"cannot open camera ({self.backend}): {e}")
+        with self._lock:
+            self._calib = load_calibration(self.calibration_file)
+            self._frame = self._warped = self._obs = None
+            self._frame_ts = time.monotonic()  # counts as a frame, so the timeout starts now
+            self._motion.reset()
+        self._stop = threading.Event()
+        self._thread = threading.Thread(target=self._run, args=(self._source, self._stop),
+                                        name="camera", daemon=True)
+        self._thread.start()
+        return {"ok": True, "calibrated": self._calib is not None}
 
     def close(self) -> None:
-        self._running = False
         if self._thread is not None:
+            self._stop.set()
             self._thread.join(timeout=2.0)
             self._thread = None
         self._release_source()
@@ -81,30 +92,18 @@ class Camera:
 
     # -- calibration ------------------------------------------------------
 
-    def _load_calibration(self):
-        if not os.path.exists(self.calibration_file):
-            return None
-        with open(self.calibration_file, encoding="utf-8") as f:
-            calib = json.load(f)
-        # Calibration made at a different resolution: scale the corners.
-        fw, fh = calib["frame_size"]
-        if (fw, fh) != (self.width, self.height):
-            sx, sy = self.width / fw, self.height / fh
-            calib["corners_px"] = [[x * sx, y * sy] for x, y in calib["corners_px"]]
-            calib["frame_size"] = [self.width, self.height]
-        return calib
-
     def calibrate(self) -> dict:
         try:
             with self._lock:
-                frame = None if self._frame is None else self._frame.copy()
-            if frame is None:
-                return err("CAMERA_NOT_READY", "no frame from the camera yet")
+                frame = self._frame
+                fresh = self._thread is not None and frame is not None and not _stale(self._frame_ts)
+            if not fresh:
+                return err("CAMERA_NOT_READY", "no frame from the camera")
 
             if self.manual_corners is not None:
                 corners = self.manual_corners
             else:
-                corners = find_aruco_corners(frame, self.aruco_dict)
+                corners = find_aruco_corners(frame)
                 if corners is None:
                     return err("CALIBRATION_FAILED", "could not find all 4 ArUco markers (ids 0-3)")
 
@@ -113,12 +112,11 @@ class Camera:
                 return err("CALIBRATION_FAILED",
                            "board not recognized; put the pieces in the starting position")
 
-            saved = {k: calib[k] for k in ("corners_px", "frame_size", "centroids")}
-            with open(self.calibration_file, "w", encoding="utf-8") as f:
-                json.dump(saved, f, indent=2)
+            saved = save_calibration(self.calibration_file, calib)
             with self._lock:
                 self._calib = saved
-                self._prev_small = None
+                self._warped = self._obs = None
+                self._motion.reset()
             return {
                 "ok": True,
                 "corners_px": calib["corners_px"],
@@ -130,12 +128,16 @@ class Camera:
 
     # -- background thread ------------------------------------------------
 
-    def _run(self):
-        while self._running:
+    def _run(self, source, stop):
+        # `source` and `stop` belong to this thread, so a thread that close() gave up waiting
+        # for can never read from the camera that start() opens next.
+        while not stop.is_set():
             try:
-                frame = self._source.read()
+                frame = source.read()
             except Exception:
                 frame = None
+            if stop.is_set():
+                break
             if frame is None:
                 time.sleep(0.05)
                 continue
@@ -144,49 +146,56 @@ class Camera:
             ts = time.monotonic()
 
             with self._lock:
-                self._frame = frame
+                self._frame, self._frame_ts = frame, ts
                 calib = self._calib
-            if calib is None:
+            if calib is None or _frame_size(frame) != calib["frame_size"]:
                 continue
 
             try:
-                warped, occupancy, low = analyze_frame(frame, calib)
+                warped, occupancy, low_confidence = analyze_frame(frame, calib)
             except Exception:
                 continue
-            stable = self._update_motion(warped, ts)
 
             with self._lock:
+                if self._calib is not calib:  # recalibrated while this frame was analyzed
+                    continue
                 self._seq += 1
                 self._warped = warped
                 self._obs = {
                     "ok": True,
                     "ts": ts,
                     "seq": self._seq,
-                    "stable": stable,
+                    "stable": self._motion.update(warped, ts),
                     "occupancy": occupancy,
-                    "low_confidence": low,
+                    "low_confidence": low_confidence,
                 }
-
-    def _update_motion(self, warped, ts):
-        small = cv2.resize(cv2.cvtColor(warped, cv2.COLOR_BGR2GRAY), (64, 64)).astype(np.float32)
-        if self._prev_small is None or float(np.abs(small - self._prev_small).mean()) > MOTION_THRESHOLD:
-            self._last_motion = ts
-        self._prev_small = small
-        return ts - self._last_motion >= self.stable_time_s
 
     # -- observations -----------------------------------------------------
 
     def get_observation(self) -> dict:
-        if not self._running:
-            return err("CAMERA_NOT_READY", "camera not started")
         with self._lock:
-            if self._calib is None:
-                return err("CAMERA_NOT_READY", "camera not calibrated")
-            if self._obs is None:
-                return err("CAMERA_NOT_READY", "no frame processed yet")
+            problem = self._not_ready()
+            if problem:
+                return err("CAMERA_NOT_READY", problem)
             obs = dict(self._obs)
         obs["low_confidence"] = list(obs["low_confidence"])
         return obs
+
+    def _not_ready(self):
+        """Why there is no observation to return, or None. Call with the lock held."""
+        if self._thread is None:
+            return "camera not started"
+        if self._calib is None:
+            return "camera not calibrated"
+        if self._frame is not None and _frame_size(self._frame) != self._calib["frame_size"]:
+            cw, ch = self._calib["frame_size"]
+            fw, fh = _frame_size(self._frame)
+            return f"calibrated at {cw}x{ch} but the camera gives {fw}x{fh}; calibrate again"
+        if self._obs is None:
+            return "no frame processed yet"
+        if _stale(self._obs["ts"]):
+            return f"no frames from the camera for {FRAME_TIMEOUT_S:g} s"
+        return None
 
     def get_debug_image(self):
         """JPEG of the warped board with the grid and detections; raw frame if not calibrated."""
@@ -195,7 +204,7 @@ class Camera:
                 if self._warped is not None and self._obs is not None:
                     img = draw_debug(self._warped, self._obs["occupancy"], self._obs["low_confidence"])
                 elif self._frame is not None:
-                    img = self._frame.copy()
+                    img = self._frame
                 else:
                     return None
             ok, buf = cv2.imencode(".jpg", img)

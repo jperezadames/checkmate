@@ -57,6 +57,10 @@ def test_capture_promotion():
 @pytest.mark.parametrize("fen,occupancy", [
     ("garbage", "W" * 64),
     (None, "W" * 64),
+    ("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR", "W" * 64),  # board part only
+    ("8/8/8/8/8/8/8/8 w - - 0 1", "." * 64),  # no kings
+    ("4k3/8/8/8/8/8/8/K3R3 w - - 0 1", "." * 64),  # side not to move is in check
+
     (START_FEN, "W" * 63),
     (START_FEN, "w" * 64),
     (START_FEN, None),

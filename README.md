@@ -207,9 +207,11 @@ checkmate/
 │   ├── occupancy.py     occupancy_from_fen, START_FEN
 │   ├── move_detection.py  detect_move
 │   ├── vision.py        warp, per-square features, classification, calibration fit
-│   ├── aruco.py         find board corners from ArUco markers
+│   ├── aruco.py         ArUco marker ids, find board corners from the markers
+│   ├── calibration.py   save / load the calibration file
+│   ├── motion.py        per-square motion check behind "stable"
 │   ├── sources.py       Picamera2 / USB webcam frame sources
-│   ├── camera.py        Camera (background thread, stability, calibration file)
+│   ├── camera.py        Camera (background thread, observations, restart)
 │   └── fake.py          FakeCamera
 ├── engine/              Joel: GameEngine, FakeGameEngine
 ├── led/                 Hsin-Chen: LedController, FakeLedController

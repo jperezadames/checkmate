@@ -30,6 +30,17 @@ def test_calibrate_fixes_orientation(shift):
     assert calib["occupancy"] == START_OCC
 
 
+@pytest.mark.parametrize("shift", [0, 1, 2, 3])
+def test_calibrate_fixes_mirrored_corners(shift):
+    # Corners listed the wrong way round (a1, a8, h8, h1): a diagonal mirror keeps the square colors.
+    a1, h1, h8, a8 = expected_corners()
+    mirrored = [a1, a8, h8, h1]
+    calib = calibrate_from_frame(render(START_OCC), mirrored[shift:] + mirrored[:shift])
+    assert calib is not None
+    assert _close(calib["corners_px"], expected_corners())
+    assert calib["occupancy"] == START_OCC
+
+
 def test_calibrate_rejects_empty_board():
     assert calibrate_from_frame(render("." * 64), expected_corners()) is None
 

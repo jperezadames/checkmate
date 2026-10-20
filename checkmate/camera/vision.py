@@ -7,6 +7,8 @@ import chess
 import cv2
 import numpy as np
 
+from checkmate.camera.occupancy import START_FEN, occupancy_from_fen
+
 # Top-down board image: WARP_SIZE x WARP_SIZE pixels, a8 at top-left, h1 at bottom-right.
 WARP_SIZE = 640
 CELL = WARP_SIZE // 8
@@ -17,8 +19,11 @@ PATCH_FRACTION = 0.5
 # A square is "low confidence" if (nearest distance / second nearest distance) is above this.
 LOW_CONFIDENCE_RATIO = 0.7
 
-CLASSES = ("empty", "W", "B")
-CLASS_CHAR = {"empty": ".", "W": "W", "B": "B"}
+# Classes are the occupancy characters (section 1.2).
+CLASSES = (".", "W", "B")
+
+# What the board must show while calibrating.
+START_OCC = occupancy_from_fen(START_FEN)
 
 
 def square_rect(i):
@@ -33,12 +38,16 @@ def is_dark_square(i):
     return (i % 8 + i // 8) % 2 == 0
 
 
+def _shade(i):
+    return "dark" if is_dark_square(i) else "light"
+
+
 def warp_board(frame, corners_px):
     """Perspective-warp `frame` to a top-down board. corners_px order: a1, h1, h8, a8."""
     src = np.array(corners_px, dtype=np.float32)
     dst = np.array([[0, WARP_SIZE], [WARP_SIZE, WARP_SIZE], [WARP_SIZE, 0], [0, 0]], dtype=np.float32)
-    m = cv2.getPerspectiveTransform(src, dst)
-    return cv2.warpPerspective(frame, m, (WARP_SIZE, WARP_SIZE))
+    matrix = cv2.getPerspectiveTransform(src, dst)
+    return cv2.warpPerspective(frame, matrix, (WARP_SIZE, WARP_SIZE))
 
 
 def square_features(warped):
@@ -53,82 +62,96 @@ def square_features(warped):
     return feats
 
 
-def _start_label(i):
-    rank = i // 8
-    if rank <= 1:
-        return "W"
-    if rank >= 6:
-        return "B"
-    return "empty"
-
-
 def fit_centroids(feats):
     """Class centroids from a board in the starting position, separately for light and dark squares."""
     centroids = {}
-    for shade, dark in (("dark", True), ("light", False)):
+    for shade in ("dark", "light"):
         centroids[shade] = {}
         for cls in CLASSES:
-            idx = [i for i in range(64) if is_dark_square(i) == dark and _start_label(i) == cls]
+            idx = [i for i in range(64) if _shade(i) == shade and START_OCC[i] == cls]
             centroids[shade][cls] = feats[idx].mean(axis=0).tolist()
     return centroids
 
 
 def classify(feats, centroids):
     """Nearest-centroid classification -> (occupancy string, list of low-confidence squares)."""
-    chars, low = [], []
+    chars, low_confidence = [], []
     for i in range(64):
-        cents = centroids["dark" if is_dark_square(i) else "light"]
+        cents = centroids[_shade(i)]
         dists = sorted((float(np.linalg.norm(feats[i] - np.array(cents[c]))), c) for c in CLASSES)
-        chars.append(CLASS_CHAR[dists[0][1]])
+        chars.append(dists[0][1])
         if dists[1][0] > 0 and dists[0][0] / dists[1][0] > LOW_CONFIDENCE_RATIO:
-            low.append(chess.square_name(i))
-    return "".join(chars), low
+            low_confidence.append(chess.square_name(i))
+    return "".join(chars), low_confidence
 
 
 def _orientation_ok(feats):
-    """True if the warped board shows the starting position the right way round.
+    """Quick checks that the warped board could be the starting position the right way round.
 
-    - empty dark squares must be darker than empty light squares (catches 90° turns / mirroring)
+    - empty dark squares must be darker than empty light squares (catches 90° turns and the
+      mirror images that swap the square colors)
     - ranks 1-2 (white pieces) must be brighter than ranks 7-8 (catches 180° turns)
+    Mirror images along a diagonal pass both; calibrate_from_frame() rules them out.
     """
-    empty = [i for i in range(64) if _start_label(i) == "empty"]
+    empty = [i for i in range(64) if START_OCC[i] == "."]
     dark = np.mean([feats[i, 0] for i in empty if is_dark_square(i)])
     light = np.mean([feats[i, 0] for i in empty if not is_dark_square(i)])
-    white = np.mean([feats[i, 0] for i in range(64) if _start_label(i) == "W"])
-    black = np.mean([feats[i, 0] for i in range(64) if _start_label(i) == "B"])
+    white = np.mean([feats[i, 0] for i in range(64) if START_OCC[i] == "W"])
+    black = np.mean([feats[i, 0] for i in range(64) if START_OCC[i] == "B"])
     return dark < light and white > black
+
+
+def _scatter(feats, centroids):
+    """How far the squares are from their starting-position class centroids (lower = better fit)."""
+    return sum(float(np.sum((feats[i] - centroids[_shade(i)][START_OCC[i]]) ** 2)) for i in range(64))
+
+
+def _corner_orders(corners):
+    """The 8 ways to read 4 corners as a1, h1, h8, a8: each rotation, as given and mirrored."""
+    mirrored = [corners[0], corners[3], corners[2], corners[1]]
+    for order in (corners, mirrored):
+        for shift in range(4):
+            yield order[shift:] + order[:shift]
 
 
 def calibrate_from_frame(frame, corners_px):
     """Fit a calibration from one frame of the board in the starting position.
 
-    Tries the 4 rotations of `corners_px` and keeps the one where a1 is a dark square and the
-    white pieces are on ranks 1-2. Returns a calibration dict, or None if no rotation fits.
+    Tries the 8 ways `corners_px` can map to a1, h1, h8, a8. Among those that pass
+    _orientation_ok(), keeps the one whose squares fit their starting-position class best: a board
+    mirrored along a diagonal mixes pieces and empty squares in every class, so it fits badly.
+    Returns a calibration dict, or None if no order fits.
     """
     corners = [list(map(float, c)) for c in corners_px]
-    for shift in range(4):
-        rotated = corners[shift:] + corners[:shift]
-        feats = square_features(warp_board(frame, rotated))
+    best = None
+    for order in _corner_orders(corners):
+        feats = square_features(warp_board(frame, order))
         if not _orientation_ok(feats):
             continue
         centroids = fit_centroids(feats)
-        occupancy, low = classify(feats, centroids)
-        h, w = frame.shape[:2]
-        return {
-            "corners_px": [[round(x, 1), round(y, 1)] for x, y in rotated],
-            "frame_size": [w, h],
-            "centroids": centroids,
-            "occupancy": occupancy,
-            "low_confidence": low,
-        }
-    return None
+        scatter = _scatter(feats, centroids)
+        if best is None or scatter < best[0]:
+            best = (scatter, order, feats, centroids)
+    if best is None:
+        return None
+
+    _, order, feats, centroids = best
+    occupancy, low_confidence = classify(feats, centroids)
+    h, w = frame.shape[:2]
+    return {
+        "corners_px": [[round(x, 1), round(y, 1)] for x, y in order],
+        "frame_size": [w, h],
+        "centroids": centroids,
+        "occupancy": occupancy,
+        "low_confidence": low_confidence,
+    }
 
 
 def analyze_frame(frame, calib):
     """Frame + calibration -> (warped image, occupancy, low-confidence squares)."""
     warped = warp_board(frame, calib["corners_px"])
-    occupancy, low = classify(square_features(warped), calib["centroids"])
-    return warped, occupancy, low
+    occupancy, low_confidence = classify(square_features(warped), calib["centroids"])
+    return warped, occupancy, low_confidence
 
 
 def draw_debug(warped, occupancy, low_confidence):

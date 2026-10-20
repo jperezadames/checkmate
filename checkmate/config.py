@@ -3,7 +3,8 @@
 import json
 from pathlib import Path
 
-DEFAULT_PATH = Path(__file__).resolve().parent.parent / "config.json"
+REPO_ROOT = Path(__file__).resolve().parent.parent
+DEFAULT_PATH = REPO_ROOT / "config.json"
 
 
 def load_config(path=DEFAULT_PATH) -> dict:
