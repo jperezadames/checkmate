@@ -6,8 +6,7 @@
     "height": 720,
     "calibration_file": "calibration.json",
     "stable_time_s": 0.5,
-    "manual_corners": null,
-    "aruco_dict": "DICT_4X4_50"
+    "manual_corners": null
   },
   "engine": {
     "stockfish_path": "/usr/games/stockfish",

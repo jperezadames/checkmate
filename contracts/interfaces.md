@@ -119,6 +119,7 @@ Converts a FEN to the occupancy string the camera should see. Everyone uses this
 occupancy_from_fen(START_FEN)
 # "WWWWWWWWWWWWWWWW................................BBBBBBBBBBBBBBBB"
 ```
+It is a plain helper, not a device call: it returns the string directly and raises `ValueError` on a bad FEN. Only pass it `START_FEN` or FENs from the engine.
 
 ### 1.5 Errors
 
@@ -153,7 +154,8 @@ One file, one section per module. Each module only reads its own section.
     "width": 1280,
     "height": 720,
     "calibration_file": "calibration.json",
-    "stable_time_s": 0.5
+    "stable_time_s": 0.5,
+    "manual_corners": null
   },
   "engine": {
     "stockfish_path": "/usr/games/stockfish",
@@ -174,6 +176,8 @@ One file, one section per module. Each module only reads its own section.
 }
 ```
 `camera.backend`: `"picamera2"` for the Raspberry Pi camera module, `"v4l2"` for a USB webcam.
+`camera.calibration_file`: a relative path is relative to the repo root.
+`camera.manual_corners`: `null` to find the board with 4 ArUco markers (`DICT_4X4_50`, ids 0, 1, 2, 3 just outside the a1, h1, h8, a8 corners; print them with `scripts/camera/make_aruco_markers.py`), or 4 `[x, y]` frame pixels (a1, h1, h8, a8 corners) to use instead of markers.
 
 ---
 
@@ -187,8 +191,10 @@ Opens the camera and starts a background thread that reads frames continuously, 
 | Result | When |
 |---|---|
 | `{"ok": true, "calibrated": true}` | camera open, calibration loaded |
-| `{"ok": true, "calibrated": false}` | camera open, no calibration file yet; main must call `calibrate()` |
+| `{"ok": true, "calibrated": false}` | camera open, no usable calibration file yet (missing or unreadable); main must call `calibrate()` |
 | `{"ok": false, "error": "CAMERA_NOT_READY", ...}` | camera couldn't be opened |
+
+Calling `start()` again while frames are arriving does nothing. If no frame has arrived for 2 s, it closes and reopens the camera (this is what `retry` relies on, section 6).
 
 ### 2.2 `Camera.calibrate() -> dict`
 Finds the board in the current frame (e.g. 4 ArUco markers on the board corners, or a fixed manual corner list), computes the perspective warp to a top-down 8×8 grid, works out which corner is a1, and saves everything to `calibration_file`. Takes ≤ 5 s. **The board should be in the starting position** while calibrating, so the module can check orientation: white pieces must be on ranks 1–2.
@@ -231,10 +237,12 @@ Returns the latest processed board. Must return in **< 50 ms** (it just reads th
 | `occupancy` | str | 64-char string (1.2). When `stable` is `false`, this is the last frame's best guess and must not be trusted. |
 | `low_confidence` | list of squares | squares where the classifier isn't sure. Can be empty. |
 
-Errors: `CAMERA_NOT_READY` (not started or not calibrated).
+`stable` is checked square by square, so a hand over even one or two squares makes it `false`. A hand that stays completely still for `stable_time_s` can't be told apart from a piece; `detect_move` then usually returns `invalid`, and the next stable observation is checked again.
+
+Errors: `CAMERA_NOT_READY` (not started, not calibrated, calibrated at a different resolution than the camera now gives, or no frames for 2 s).
 
 ### 2.4 `Camera.get_debug_image() -> bytes | None` (optional, nice to have)
-JPEG of the warped top-down board with the grid and detected colors drawn on. The UI can show it on a "camera check" screen. `None` if there's no frame.
+JPEG of the warped top-down board with the grid and detected colors drawn on. The UI can show it on a "camera check" screen. Before calibration it is the raw camera frame, so the camera can be aimed. `None` if there's no frame.
 
 ### 2.5 `detect_move(fen: str, occupancy: str) -> dict` (pure function)
 Works out what move was made, given the **position before the move** and a **stable** occupancy after it. No camera or hardware access, so it can be unit-tested on a laptop.
