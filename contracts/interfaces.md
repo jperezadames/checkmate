@@ -309,7 +309,7 @@ Errors: `ENGINE_ERROR` (binary not found or didn't start).
 |---|---|---|
 | `human_color` | `"white"` / `"black"` | color the human plays |
 | `elo` | int | engine strength; clamped to `[elo_min, elo_max]`. Sets `UCI_LimitStrength = true`, `UCI_Elo = elo`. |
-| `mode` | `"play"` / `"practice"` | in `practice`, `rate_last_move()` is used after each human move |
+| `mode` | `"play"` / `"practice"` | both modes provide position evaluation and latest-move ratings; `practice` is the training experience (conversational trainer API to be agreed separately) |
 
 Resets the board to `START_FEN`. Returns `state()`. Errors: `BAD_REQUEST`, `ENGINE_ERROR`.
 
@@ -396,7 +396,7 @@ Note: python-chess's built-in timeout only applies when `Limit.time` is set, so 
 Best move for the side to move (the human). Same fields as `get_engine_move()`. Blocks ≤ `think_time_s`. Uses full strength (not the limited Elo).
 
 ### 3.7 `GameEngine.rate_last_move() -> dict`
-Rates the last move played. Used in `practice` mode after each human move. Scores are in centipawns from **White's point of view**.
+Rates the last confirmed move played, by either the human or the bot, in both `play` and `practice` modes. Run only after `push_move()` succeeds; a suggested bot move is not yet a played move. Use full-strength analysis, independent of the bot's selected playing Elo. Scores are in centipawns from **White's point of view**.
 ```json
 {
   "ok": true,
@@ -631,6 +631,7 @@ curl -X POST http://127.0.0.1:8000/api/command -H 'Content-Type: application/jso
   "promotion": null,
   "hint": null,
   "rating": null,
+  "evaluation": null,
   "board_problem": null,
   "result": null,
   "termination": null,
@@ -651,11 +652,33 @@ curl -X POST http://127.0.0.1:8000/api/command -H 'Content-Type: application/jso
 | `engine_move` | dict or `null` | set only in `engine_move_pending`; same fields as `get_engine_move()` (3.5) |
 | `promotion` | dict or `null` | set only in `promotion_choice`: `{"from": "e7", "to": "e8", "choices": ["q","r","b","n"]}` |
 | `hint` | dict or `null` | last requested hint, same fields as `get_hint()`; cleared after the next move |
-| `rating` | dict or `null` | practice mode: rating of the human's last move, same fields as `rate_last_move()` (3.7) |
+| `rating` | dict or `null` | both modes: rating of the latest confirmed move (human or bot), same fields as `rate_last_move()` (3.7); `played` must match `last_move` |
+| `evaluation` | dict or `null` | both modes: evaluation of the current confirmed position; see 5.3.1 |
 | `board_problem` | dict or `null` | physical board doesn't match: `{"squares": ["e2","e5"], "text": "Board doesn't match. Put the pieces back."}` |
 | `result`, `termination` | | same as `engine.state()` |
 | `message` | str | one short line to show the user |
 | `devices` | dict | each of `camera`, `engine`, `led` is `"ok"` or `"error"` |
+
+### 5.3.1 Position evaluation and move feedback (both modes)
+
+**Integration addition agreed with Jayden:** engine owner Joel and the backend/game-loop owners need to implement this behavior. This contract update does not mean the engine or server already supplies it.
+
+```json
+{
+  "fen": "rnbqkbnr/pppppppp/8/8/8/5P2/PPPPP1PP/RNBQKBNR b KQkq - 0 1",
+  "score_cp": -45,
+  "mate_in": null
+}
+```
+
+- `fen` identifies the position evaluated and must equal the enclosing `state.fen`.
+- `score_cp` is an integer in centipawns from White's point of view. Positive favors White; negative favors Black. The UI divides by 100 for a signed pawn-unit label (e.g. `-45` → `−0.45`). It is not a win percentage or a move-quality rating.
+- `mate_in` is a signed integer for a forced mate, positive for White mating and negative for Black mating; `score_cp` is then `null`. Check for `null` explicitly rather than truthiness; a terminal mate may be zero, in which case use `result`/`termination` for the winner.
+- Main derives `evaluation` from a successful `rate_last_move()` result: current `fen`, `score_after` → `score_cp`, and `mate_in`. No additional engine method is required for this first version.
+- Before the first move, evaluation and rating may be `null`. After every successful `push_move`, clear the previous evaluation and rating before publishing the new position, then publish the new analysis when available. Do not display an old score against a new position. Initial-position analysis can be added later.
+- If move analysis fails, keep these fields `null`, optionally send a warning toast, and continue the game if move generation and other required functions still work. The UI shows “Analysis unavailable” or a neutral unavailable marker, never a fabricated `0.00`.
+- The UI labels feedback as the **latest move**, includes `played_san`, and identifies the mover from the confirmed move history. Ratings are engine-based categories from 3.7, not Chess.com's proprietary classifications or a percentage accuracy score.
+- Display preferences may hide the evaluation bar or move feedback locally; this does not change the backend game mode or require a command.
 
 ### 5.4 Phases: what the UI shows and which commands it may send
 
@@ -665,13 +688,15 @@ curl -X POST http://127.0.0.1:8000/api/command -H 'Content-Type: application/jso
 | `calibrating` | camera calibration running | spinner, "Put the pieces in the starting position" | none |
 | `setup_check` | game created; waiting until the physical board matches the start position | "Set up the board"; wrong squares from `board_problem` | `cancel` |
 | `human_turn` | waiting for the human's move | "Your move", hint button | `hint`, `resign`, `cancel` |
-| `engine_thinking` | Stockfish is computing | spinner "Thinking…" | `resign`, `cancel` |
-| `engine_move_pending` | LEDs show the computer's move; waiting for the human to play it on the board | `engine_move` big and clear (SAN + from→to, rook for castling, removed pawn for en passant, new piece for promotion) | `resign`, `cancel` |
+| `engine_thinking` | Stockfish is computing | "Bot's turn — thinking…" with spinner | `resign`, `cancel` |
+| `engine_move_pending` | LEDs show the computer's move; waiting for the human to play it on the board | "Bot's turn — play the bot's move"; `engine_move` big and clear (SAN + from→to, rook for castling, removed pawn for en passant, new piece for promotion) | `resign`, `cancel` |
 | `promotion_choice` | human promoted a pawn; camera can't tell which piece | Q / R / B / N buttons | `promote`, `cancel` |
 | `game_over` | game ended | `result`, `termination`, move list | `start_game`, `cancel` |
 | `error` | camera or engine failed | `message`, `devices` | `retry`, `calibrate`, `cancel` |
 
 `board_problem` can also be set in `human_turn` and `engine_move_pending` (illegal move or the computer's move played wrong). The phase stays the same; the UI shows a warning until it goes back to `null`.
+
+The main instruction follows `phase`, not a UI timer or locally predicted move. Only show “Your turn” in `human_turn`. Keep the confirmed board position visible during `engine_move_pending`; highlight the requested move without moving the on-screen pieces ahead of camera confirmation. Setup, promotion, connection loss, errors, and game-over instructions take priority over ordinary turn text.
 
 ### 5.5 UI → Main: commands
 
@@ -725,7 +750,7 @@ human_turn
   wait for a stable observation whose occupancy differs from the last one processed
   r = detect_move(engine.state().fen, obs.occupancy)
     move       ─▶ engine.push_move(r.move); led.clear()
-                  practice mode: rating = engine.rate_last_move()
+                  both modes: clear old analysis, rate confirmed move, update rating/evaluation (5.3.1)
                   game over? ─▶ game_over, else ─▶ engine_thinking
     promotion  ─▶ promotion_choice
     no_change  ─▶ clear board_problem, stay
@@ -745,6 +770,7 @@ engine_move_pending
   r = detect_move(engine.state().fen, obs.occupancy) on each new stable observation
     r is m.move (or promotion candidates contain m.move)
           ─▶ engine.push_move(m.move); led.clear()
+             both modes: clear old analysis, rate confirmed move, update rating/evaluation (5.3.1)
              game over? ─▶ game_over, else ─▶ human_turn
     no_change ─▶ stay (human hasn't moved yet)
     anything else ─▶ board_problem = wrong squares, LEDs keep showing m plus "error" squares, stay

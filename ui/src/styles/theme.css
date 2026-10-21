@@ -1,0 +1,18 @@
+:root {
+  color-scheme: dark;
+  font-family: 'Avenir Next', 'Segoe UI', sans-serif;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  --page: #0c110e;
+  --screen: #141c18;
+  --surface: #202b23;
+  --surface-hover: #29372c;
+  --text: #f1f1e6;
+  --secondary: #bac3b6;
+  --subtle: #a0ad9e;
+  --line: #364338;
+  --green: #c3d6aa;
+  --gold: #d8bd81;
+  --radius: 15px;
+}

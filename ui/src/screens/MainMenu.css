@@ -1,0 +1,25 @@
+.menu-heading { margin: 24px 0 20px; display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.menu-heading h1 { margin: 0; font-size: 20px; font-weight: 500; letter-spacing: -.4px; }
+.menu-heading p { margin: 0; color: var(--subtle); font-size: 13px; }
+.mode-list { display: flex; flex-direction: column; gap: 12px; flex: 1; }
+.mode-button { --mode-accent: var(--green); display: flex; align-items: center; gap: 18px; text-align: left; width: 100%; flex: 1; min-height: 82px; padding: 14px 20px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); transition: background .15s, border-color .15s, transform .15s; }
+.mode-button--gold { --mode-accent: var(--gold); }
+.mode-button:enabled:hover { background: var(--surface-hover); border-color: var(--mode-accent); }
+.mode-button:enabled:active { transform: scale(.99); }
+.mode-icon { width: 46px; height: 46px; flex-shrink: 0; border-radius: 13px; background: color-mix(in srgb, var(--mode-accent) 8%, transparent); color: var(--mode-accent); display: flex; align-items: center; justify-content: center; }
+.mode-copy { display: flex; flex-direction: column; gap: 5px; flex: 1; }
+.mode-title { font-size: 21px; font-weight: 600; letter-spacing: -.3px; }
+.mode-description { font-size: 13px; line-height: 1.4; color: var(--secondary); }
+.mode-arrow { color: var(--mode-accent); }
+.mode-button:disabled { background: #19211c; border-color: #2a352d; }
+.mode-button:disabled .mode-title, .mode-button:disabled .mode-icon { color: var(--subtle); }
+.mode-button:disabled .mode-description { color: var(--subtle); }
+.mode-badge { border: 1px solid var(--line); padding: 6px 9px; border-radius: 6px; color: var(--secondary); font-size: 11px; white-space: nowrap; }
+@media (max-width: 600px) {
+  .menu-heading { flex-direction: column; gap: 6px; }
+  .mode-button { padding: 12px; gap: 12px; }
+  .mode-icon { width: 36px; height: 40px; }
+  .mode-description { font-size: 12px; }
+  .mode-title { font-size: 19px; }
+  .mode-badge { white-space: normal; max-width: 64px; text-align: center; }
+}
