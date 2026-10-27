@@ -8,3 +8,8 @@ Re-export the public names here, e.g.:
     from checkmate.led.controller import LedController
     from checkmate.led.fake import FakeLedController
 """
+from checkmate.led.controller import LedController
+from checkmate.led.fake import FakeLedController
+from checkmate.led.frames import ROLE_COLORS, move_frame
+
+__all__ = ["ROLE_COLORS", "FakeLedController", "LedController", "move_frame"]
