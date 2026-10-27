@@ -11,15 +11,12 @@ the only game state in the system (section 0.2, 0.4), so nothing returned is a c
 
 import chess
 
-from checkmate.camera.occupancy import START_FEN
 from checkmate.errors import err
 
 COLORS = {"white": chess.WHITE, "black": chess.BLACK}
 MODES = ("play", "practice")
-
-
-def _square(name_square: int) -> str:
-    return chess.square_name(name_square)
+# Elo range from section 1.1, used when the engine doesn't report one.
+ELO_MIN, ELO_MAX = 1320, 3190
 
 
 class BaseChessGame:
@@ -32,7 +29,7 @@ class BaseChessGame:
         self._elo = None
         self._mode = None
         self._moves_san = []          # SAN of each played move, same length as move_stack
-        self._resignation = None      # ("1-0" | "0-1", ) winner result when a side resigned
+        self._resignation = None      # "1-0" / "0-1" once a side resigned, else None
         self._started = False
         # Filled in by the subclass's start(); the UI difficulty slider reads these.
         self._elo_min = None
@@ -63,21 +60,29 @@ class BaseChessGame:
             return err("NOT_STARTED", "start() was not called or failed")
         return None
 
+    def _start_info(self) -> dict:
+        return {
+            "ok": True,
+            "engine_name": self._engine_name,
+            "elo_min": self._elo_min,
+            "elo_max": self._elo_max,
+        }
+
     # -- new_game (section 3.2) ------------------------------------------------------------
 
     def new_game(self, human_color: str, elo: int, mode: str = "play") -> dict:
         not_started = self._require_started()
         if not_started:
             return not_started
-        if human_color not in COLORS:
+        if not isinstance(human_color, str) or human_color not in COLORS:
             return err("BAD_REQUEST", 'human_color must be "white" or "black"')
-        if mode not in MODES:
+        if not isinstance(mode, str) or mode not in MODES:
             return err("BAD_REQUEST", 'mode must be "play" or "practice"')
         if isinstance(elo, bool) or not isinstance(elo, int):
             return err("BAD_REQUEST", "elo must be an int")
 
         clamped = max(self._elo_min, min(self._elo_max, elo))
-        self._board = chess.Board(START_FEN)
+        self._board = chess.Board()
         self._moves_san = []
         self._resignation = None
         self._human_color = human_color
@@ -110,7 +115,7 @@ class BaseChessGame:
             return no_game
         board = self._board
         result, termination = self._outcome()
-        check_square = _square(board.king(board.turn)) if board.is_check() else None
+        check_square = chess.square_name(board.king(board.turn)) if board.is_check() else None
         last = board.peek().uci() if board.move_stack else None
         return {
             "ok": True,
@@ -157,8 +162,10 @@ class BaseChessGame:
         no_game = self._require_game()
         if no_game:
             return no_game
-        if color not in COLORS:
+        if not isinstance(color, str) or color not in COLORS:
             return err("BAD_REQUEST", 'color must be "white" or "black"')
+        if self._game_over():  # keep the result of a game that already ended
+            return err("GAME_OVER", "the game has already ended")
         # The other side wins.
         self._resignation = "0-1" if color == "white" else "1-0"
         return self.state()
@@ -180,20 +187,20 @@ class BaseChessGame:
                 rook_to = chess.square(3, rank)
         if board.is_en_passant(move):
             # The captured pawn sits on the destination file but the mover's starting rank.
-            capture_square = _square(chess.square(chess.square_file(to_sq),
-                                                   chess.square_rank(from_sq)))
+            capture_square = chess.square_name(chess.square(chess.square_file(to_sq),
+                                                            chess.square_rank(from_sq)))
         elif board.is_capture(move):
-            capture_square = _square(to_sq)
+            capture_square = chess.square_name(to_sq)
         else:
             capture_square = None
         return {
             "ok": True,
             "move": move.uci(),
             "san": board.san(move),
-            "from": _square(from_sq),
-            "to": _square(to_sq),
-            "rook_from": _square(rook_from) if rook_from is not None else None,
-            "rook_to": _square(rook_to) if rook_to is not None else None,
+            "from": chess.square_name(from_sq),
+            "to": chess.square_name(to_sq),
+            "rook_from": chess.square_name(rook_from) if rook_from is not None else None,
+            "rook_to": chess.square_name(rook_to) if rook_to is not None else None,
             "capture_square": capture_square,
             "promotion": chess.piece_symbol(move.promotion) if move.promotion else None,
         }

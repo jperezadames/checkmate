@@ -8,25 +8,17 @@ engine (shared in base.py).
 
 import chess
 
-from checkmate.engine.base import BaseChessGame
+from checkmate.engine.base import ELO_MAX, ELO_MIN, BaseChessGame
 from checkmate.errors import err
-
-FAKE_ELO_MIN = 1320
-FAKE_ELO_MAX = 3190
 
 
 class FakeGameEngine(BaseChessGame):
     def start(self) -> dict:
         self._started = True
         self._engine_name = "FakeGameEngine"
-        self._elo_min = FAKE_ELO_MIN
-        self._elo_max = FAKE_ELO_MAX
-        return {
-            "ok": True,
-            "engine_name": self._engine_name,
-            "elo_min": self._elo_min,
-            "elo_max": self._elo_max,
-        }
+        self._elo_min = ELO_MIN
+        self._elo_max = ELO_MAX
+        return self._start_info()
 
     def close(self) -> None:
         self._started = False

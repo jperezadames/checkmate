@@ -1,11 +1,18 @@
 """FakeGameEngine (contracts/interfaces.md section 3.9) and the shared board logic in
 base.py. No Stockfish binary required."""
 
+import subprocess
+import sys
+from pathlib import Path
+
 import chess
 import pytest
 
-from checkmate.camera.occupancy import START_FEN
 from checkmate.engine import FakeGameEngine
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+
+START_FEN = chess.STARTING_FEN
 
 
 @pytest.fixture
@@ -57,6 +64,8 @@ def test_new_game_clamps_elo(elo, expected):
     ("white", 1500, "blitz"),       # bad mode
     ("white", "strong", "play"),    # bad elo type
     ("white", True, "play"),        # bool is not an int
+    (["white"], 1500, "play"),      # not a string
+    ("white", 1500, {"play": 1}),   # not a string
 ])
 def test_new_game_bad_request(args):
     eng = FakeGameEngine({})
@@ -149,8 +158,23 @@ def test_resign_ends_game(engine):
     assert engine.push_move("e7e5")["error"] == "GAME_OVER"
 
 
-def test_resign_bad_color(engine):
-    assert engine.resign("grey")["error"] == "BAD_REQUEST"
+@pytest.mark.parametrize("bad", ["grey", {}, None])
+def test_resign_bad_color(engine, bad):
+    assert engine.resign(bad)["error"] == "BAD_REQUEST"
+
+
+def test_resign_after_checkmate_keeps_the_result(engine):
+    for mv in ["f2f3", "e7e5", "g2g4", "d8h4"]:  # fool's mate: black wins
+        engine.push_move(mv)
+    assert engine.resign("black")["error"] == "GAME_OVER"
+    state = engine.state()
+    assert state["result"] == "0-1" and state["termination"] == "CHECKMATE"
+
+
+def test_engine_package_does_not_need_opencv():
+    # The engine must import on a machine without the camera's dependencies (section 0.2).
+    code = "import sys, checkmate.engine; assert 'cv2' not in sys.modules"
+    subprocess.run([sys.executable, "-c", code], check=True, cwd=REPO_ROOT)
 
 
 # -- move-detail dict for every move type (white-box: craft the position directly) -----------
