@@ -537,6 +537,7 @@ What main sends for the computer's move (`m = engine.get_engine_move()`):
 | `BAD_CMD` | unknown `cmd` |
 | `BAD_SQUARE` | square not `a1`–`h8` |
 | `BAD_ROLE` | unknown role |
+| `BAD_VALUE` | a field has the wrong type or range (`squares` not a list, `value` not 0–100) |
 | `TOO_LONG` | line longer than 4096 bytes (reply `id` is `null`) |
 
 On the Pi, any Pico error becomes `{"ok": false, "error": "LED_REJECTED", "message": "<pico error>: <pico message>"}`.
