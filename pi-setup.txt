@@ -27,14 +27,25 @@ Target: Raspberry Pi 5, Raspberry Pi OS (Bookworm or Trixie).
      python-chess   engine: board state + Stockfish interface
      numpy (<2)     camera math (pinned for Picamera2 compatibility)
      opencv-python  camera vision / ArUco detection
+     pyserial       LED controller: USB serial link to the Pico
      fastapi        backend server
      uvicorn        runs the server
 
-   Note: pyserial will be added to requirements.txt once the LED controller
-   is implemented (Pi-to-Pico serial link).
+3. BUTTONS
+   The 4 console buttons go straight to the Pi's GPIO (no Pico), each between
+   its pin and GND. These lines in /boot/firmware/config.txt make them ordinary
+   keyboard keys, so the UI only has to handle arrow / Enter / Escape keys:
+
+     dtoverlay=gpio-key,gpio=17,keycode=105,label="LEFT"
+     dtoverlay=gpio-key,gpio=27,keycode=106,label="RIGHT"
+     dtoverlay=gpio-key,gpio=22,keycode=28,label="ENTER"
+     dtoverlay=gpio-key,gpio=23,keycode=1,label="ESC"
+
+   GPIO17 = pin 11, GPIO27 = pin 13, GPIO22 = pin 15, GPIO23 = pin 16,
+   GND = pin 14. Reboot, then check them with `sudo apt install evtest; evtest`.
 
 
-3. RUN
+4. RUN
 
      .venv/bin/uvicorn checkmate.server:app --host 127.0.0.1 --port 8000
 
