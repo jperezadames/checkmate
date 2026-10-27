@@ -1,218 +1,225 @@
-"""LedController: drives the Pico LED board over USB serial (JSON lines).
+"""LedController: the Pi side of the LED board (contracts/interfaces.md sections 4.1, 4.3).
 
-Protocol (one JSON object per line, UTF-8, "\\n"-terminated; every request gets one reply with
-the same "id"):
+Talks to pico/main.py over USB serial, one JSON object per line. The Pi sends one command at a
+time and waits for the reply with the same id. No reply within reply_timeout_s: resend once
+with the same id; still nothing: the link is down and the call returns LED_DISCONNECTED.
 
-    Pi -> Pico                                               Pico -> Pi
-    {"id": 1, "cmd": "ping"}                                 {"id": 1, "ok": true, "fw": "checkmate-led 1"}
-    {"id": 2, "cmd": "show", "brightness": 0.25,
-     "squares": {"e2": [0, 255, 0], "e4": [0, 90, 255]}}     {"id": 2, "ok": true}
-    {"id": 3, "cmd": "test"}                                 {"id": 3, "ok": true}
-    errors:                                                  {"id": n, "ok": false, "error": "BAD_REQUEST",
-                                                              "message": "..."}
+While the link is down, a background thread pings every 2 s, reopening the port. When the Pico
+answers, it gets the brightness and the last pattern again, so main never has to resend.
 
-"show" replaces the whole board (squares not listed go dark), so it is safe to resend after a
-reconnect. "test" lights a1 red, h1 green, h8 blue and a8 white, for checking the wiring.
-
-Public methods never raise; they return {"ok": True, ...} or err(CODE, message) (section 1.5).
-If the Pico is unplugged, calls return LED_NOT_READY and the next call reconnects and puts the
-last frame back.
+Public methods never raise and return within about 1.2 s (section 4.1).
 """
 
+import glob
 import json
+import os
 import threading
 import time
 
 from checkmate.errors import err
-from checkmate.led.frames import check_frame, frame_colors, move_frame
+from checkmate.led.squares import check_squares
 
-# USB vendor id of the Raspberry Pi Pico (MicroPython USB serial).
-PICO_USB_VID = 0x2E8A
+FALLBACK_PORT = "/dev/ttyACM0"
+BAUDRATE = 115200        # ignored by USB CDC, but pyserial needs one (section 4.3)
+PING_INTERVAL_S = 2.0    # while disconnected
+READ_POLL_S = 0.05       # one serial readline(); the whole wait is reply_timeout_s
+LOCK_WAIT_S = 0.2        # main gives up this soon while the background thread reconnects
 
-# Read timeout for one serial readline(); the whole reply wait is timeout_s.
-READ_POLL_S = 0.05
 
-
-def _open_port(port, baudrate):
+def _open_port(port):
     """Open a serial port. Separate function so tests can replace it."""
     import serial  # pyserial
 
-    return serial.Serial(port, baudrate=baudrate, timeout=READ_POLL_S, write_timeout=1.0)
+    return serial.Serial(port, baudrate=BAUDRATE, timeout=READ_POLL_S, write_timeout=0.5)
 
 
-def find_pico_port():
-    """Device path of the first Raspberry Pi Pico on USB, or None."""
-    from serial.tools import list_ports
-
-    for info in list_ports.comports():
-        if info.vid == PICO_USB_VID:
-            return info.device
-    return None
+def find_port(pattern: str):
+    """First device matching `pattern` (a path or a glob), else /dev/ttyACM0 if present, else None."""
+    matches = sorted(glob.glob(pattern))
+    if matches:
+        return matches[0]
+    return FALLBACK_PORT if os.path.exists(FALLBACK_PORT) else None
 
 
-class _LinkError(Exception):
-    pass
+class _LinkDown(Exception):
+    """The Pico is unplugged or not answering."""
 
 
 class LedController:
     def __init__(self, config: dict):
-        self.port = config.get("port", "auto")
-        self.baudrate = int(config.get("baudrate", 115200))
-        self.timeout_s = float(config.get("timeout_s", 1.0))
-        self.brightness = float(config.get("brightness", 0.25))
-        if not 0.0 <= self.brightness <= 1.0:
-            raise ValueError(f"led.brightness must be between 0 and 1, got {self.brightness}")
+        brightness = config.get("brightness", 40)
+        if isinstance(brightness, bool) or not isinstance(brightness, int) or not 0 <= brightness <= 100:
+            raise ValueError(f"led.brightness must be an int from 0 to 100, got {brightness!r}")
+        self._port_pattern = config.get("port", FALLBACK_PORT)
+        self._reply_timeout = float(config.get("reply_timeout_s", 0.5))
 
-        self._lock = threading.Lock()
+        # What main asked for last; sent again after every (re)connect.
+        self._brightness = brightness
+        self._squares = []
+
+        self._lock = threading.Lock()  # the port is shared with the reconnect thread
+        self._stop = threading.Event()
+        self._thread = None
         self._serial = None
+        self._rx = b""                 # part of a reply line read so far
         self._next_id = 0
-        self._wanted = {}   # frame the board should show
-        self._shown = None  # frame the Pico confirmed (None = unknown)
-        self.port_name = None
-        self.firmware = None
+        self._connected = False
+        self._fw = None
+        self._why = "not connected yet"  # last link problem, for LED_DISCONNECTED messages
 
-    @property
-    def connected(self) -> bool:
-        return self._serial is not None
-
-    # -- lifecycle --------------------------------------------------------
+    # -- lifecycle -----------------------------------------------------------------------------
 
     def start(self) -> dict:
-        """Connect (or reconnect) to the Pico and restore the current frame."""
+        """Open the port and ping the Pico. If that fails, keep retrying in the background."""
         with self._lock:
-            if self._serial is not None:
-                try:
-                    self._exchange({"cmd": "ping"})
-                    return self._started()
-                except Exception:
-                    self._close_serial()
-            problem = self._connect()
-            return problem or self._started()
-
-    def _started(self):
-        return {"ok": True, "port": self.port_name, "firmware": self.firmware}
+            if not self._connected:
+                self._try_connect()
+        if self._thread is None:
+            self._stop.clear()
+            self._thread = threading.Thread(target=self._reconnect_loop, name="led", daemon=True)
+            self._thread.start()
+        if self._connected:
+            return {"ok": True, "fw": self._fw}
+        return err("LED_DISCONNECTED", self._why)
 
     def close(self) -> None:
-        """Turn the LEDs off (if connected) and release the port."""
+        self._stop.set()
+        if self._thread is not None:
+            self._thread.join(timeout=5)
+            self._thread = None
         with self._lock:
-            if self._serial is not None:
-                try:
-                    self._exchange({"cmd": "show", "squares": {}, "brightness": self.brightness})
-                except Exception:
-                    pass
-            self._close_serial()
+            self._drop("closed")
 
-    # -- what to show -----------------------------------------------------
+    # -- section 4.1 ---------------------------------------------------------------------------
 
-    def show(self, frame: dict) -> dict:
-        """Show {square: role}; every other square goes dark. Roles: see frames.ROLE_COLORS."""
-        problem = check_frame(frame)
+    def show(self, squares: list) -> dict:
+        """Replace everything lit with `squares`: [{"sq": "e7", "role": "engine_from"}, ...]."""
+        problem = check_squares(squares)
         if problem:
             return err("BAD_REQUEST", problem)
-        with self._lock:
-            self._wanted = dict(frame)
-            if self._serial is not None and self._shown == self._wanted:
-                return {"ok": True}  # already showing it; the game loop can call this every tick
-            return self._call(self._show_request())
-
-    def show_move(self, move: dict) -> dict:
-        """Light a move dict (state.engine_move): from, to, castling rook, en passant capture."""
-        if not isinstance(move, dict) or not move.get("from") or not move.get("to"):
-            return err("BAD_REQUEST", "move must be a dict with 'from' and 'to'")
-        return self.show(move_frame(move))
-
-    def show_hint(self, move: dict) -> dict:
-        if not isinstance(move, dict) or not move.get("from") or not move.get("to"):
-            return err("BAD_REQUEST", "move must be a dict with 'from' and 'to'")
-        return self.show(move_frame(move, "hint", "hint"))
-
-    def show_problem(self, squares) -> dict:
-        """Light the squares that don't match the expected position (state.board_problem)."""
-        if not isinstance(squares, (list, tuple)):
-            return err("BAD_REQUEST", "squares must be a list of square names")
-        return self.show({square: "problem" for square in squares})
+        self._squares = [{"sq": item["sq"], "role": item["role"]} for item in squares]
+        return self._send({"cmd": "set", "squares": self._squares})
 
     def clear(self) -> dict:
-        return self.show({})
+        self._squares = []
+        return self._send({"cmd": "clear"})
 
-    def test_pattern(self) -> dict:
-        """a1 red, h1 green, h8 blue, a8 white: for checking ROTATION / MIRROR in pico/main.py."""
-        with self._lock:
-            self._shown = None  # the next show() must be sent again
-            return self._call({"cmd": "test"})
+    def set_brightness(self, percent: int) -> dict:
+        if isinstance(percent, bool) or not isinstance(percent, int) or not 0 <= percent <= 100:
+            return err("BAD_REQUEST", f"brightness must be an int from 0 to 100, got {percent!r}")
+        self._brightness = percent
+        return self._send({"cmd": "brightness", "value": percent})
 
-    # -- serial link (call with the lock held) -----------------------------
+    def self_test(self) -> dict:
+        """a1, h1, h8, a8 one by one, then off: checks the board's orientation."""
+        self._squares = []  # the test ends with everything off
+        return self._send({"cmd": "test"})
 
-    def _show_request(self):
-        return {"cmd": "show", "squares": frame_colors(self._wanted), "brightness": self.brightness}
+    def is_connected(self) -> bool:
+        return self._connected
 
-    def _call(self, request) -> dict:
-        if self._serial is None:
-            problem = self._connect()
-            if problem:
-                return problem
-            if request.get("cmd") == "show":
-                return {"ok": True}  # _connect() already sent the wanted frame
+    # -- one command from main -----------------------------------------------------------------
+
+    def _send(self, cmd: dict) -> dict:
+        if self._thread is None:
+            return err("NOT_STARTED", "start() was not called")
+        # The pattern and brightness are already remembered, so if the link is down the
+        # reconnect thread shows them as soon as the Pico answers again.
+        if not self._lock.acquire(timeout=LOCK_WAIT_S):
+            return err("LED_DISCONNECTED", "reconnecting to the Pico")
         try:
-            reply = self._exchange(request)
-        except Exception as e:
-            self._close_serial()
-            return err("LED_NOT_READY", f"lost the Pico: {e}")
+            if not self._connected:
+                return err("LED_DISCONNECTED", self._why)
+            reply = self._command(cmd)
+        except _LinkDown as e:
+            return err("LED_DISCONNECTED", str(e))
+        finally:
+            self._lock.release()
         if not reply.get("ok"):
-            return err(str(reply.get("error", "LED_ERROR")), str(reply.get("message", "")))
-        if request.get("cmd") == "show":
-            self._shown = dict(self._wanted)
+            return err("LED_REJECTED", f"{reply.get('error')}: {reply.get('message')}")
         return {"ok": True}
 
-    def _connect(self):
-        """Open the port, ping the Pico and send the wanted frame. Returns None or an err dict."""
-        self._close_serial()
-        try:
-            port = find_pico_port() if self.port == "auto" else self.port
-        except Exception as e:
-            return err("LED_NOT_READY", f"cannot list serial ports: {e}")
-        if port is None:
-            return err("LED_NOT_READY", "no Raspberry Pi Pico found on USB; set led.port in config.json")
-        try:
-            self._serial = _open_port(port, self.baudrate)
-            self._serial.reset_input_buffer()
-            self._serial.write(b"\n")  # end any half-written line from before
-            pong = self._exchange({"cmd": "ping"})
-            reply = self._exchange(self._show_request())
-            if not reply.get("ok"):
-                raise _LinkError(reply.get("message", "show failed"))
-        except Exception as e:
-            self._close_serial()
-            return err("LED_NOT_READY", f"cannot talk to the Pico on {port}: {e}")
-        self.port_name = port
-        self.firmware = pong.get("fw")
-        self._shown = dict(self._wanted)
-        return None
+    # -- the link (call with the lock held) ------------------------------------------------------
 
-    def _exchange(self, request) -> dict:
-        """Send one request and wait for the reply with the same id. Raises on failure."""
-        self._next_id += 1
-        rid = self._next_id
-        line = json.dumps(dict(request, id=rid), separators=(",", ":")) + "\n"
-        self._serial.write(line.encode("utf-8"))
-        deadline = time.monotonic() + self.timeout_s
-        while time.monotonic() < deadline:
-            raw = self._serial.readline()
-            if not raw:
+    def _reconnect_loop(self):
+        while not self._stop.wait(PING_INTERVAL_S):
+            if self._connected:
                 continue
+            with self._lock:
+                if not self._connected and not self._stop.is_set():
+                    self._try_connect()
+
+    def _try_connect(self) -> bool:
+        try:
+            self._connect()
+            return True
+        except Exception as e:  # _LinkDown, or the port could not be opened
+            self._drop(str(e))
+            return False
+
+    def _connect(self):
+        """Reopen the port, ping the Pico, then send the brightness and the pattern."""
+        self._drop(self._why)
+        port = find_port(self._port_pattern)
+        if port is None:
+            raise _LinkDown(f"no Pico at {self._port_pattern} or {FALLBACK_PORT}")
+        self._serial = _open_port(port)
+        self._serial.reset_input_buffer()
+        self._serial.write(b"\n")  # end a half-written line left by an earlier run
+        self._fw = self._command({"cmd": "ping"}).get("fw")
+        # Main may change the pattern while this runs (it doesn't wait for the lock),
+        # so send until what was sent is still what main wants.
+        while True:
+            brightness, squares = self._brightness, self._squares
+            self._command({"cmd": "brightness", "value": brightness})
+            self._command({"cmd": "set", "squares": squares})
+            if brightness == self._brightness and squares is self._squares:
+                return
+
+    def _command(self, cmd: dict) -> dict:
+        """Send one command and return the Pico's reply. Raises _LinkDown."""
+        if self._serial is None:
+            raise _LinkDown(self._why)
+        self._next_id = self._next_id % 2**31 + 1
+        rid = self._next_id
+        line = json.dumps(dict(cmd, id=rid), separators=(",", ":")).encode() + b"\n"
+        for _ in range(2):  # resend once with the same id (section 4.3)
             try:
-                reply = json.loads(raw.decode("utf-8", "replace"))
+                self._serial.write(line)
+                reply = self._read_reply(rid)
+            except Exception as e:  # unplugged: the port itself fails
+                self._drop(f"serial port error: {e}")
+                raise _LinkDown(self._why) from e
+            if reply is not None:
+                self._connected = True
+                return reply
+        self._drop(f"no reply from the Pico within {self._reply_timeout:g} s")
+        raise _LinkDown(self._why)
+
+    def _read_reply(self, rid: int):
+        deadline = time.monotonic() + self._reply_timeout
+        while time.monotonic() < deadline:
+            self._rx += self._serial.readline()
+            if not self._rx.endswith(b"\n"):
+                continue
+            line, self._rx = self._rx, b""
+            try:
+                reply = json.loads(line)
             except ValueError:
                 continue  # REPL banner or other text from the Pico
+            # Other ids are late replies to earlier commands; id null answers a garbled
+            # line, which only the "\n" sent on connect can cause.
             if isinstance(reply, dict) and reply.get("id") == rid:
                 return reply
-        raise _LinkError(f"no reply within {self.timeout_s:g} s (is pico/main.py on the Pico?)")
+        return None
 
-    def _close_serial(self):
+    def _drop(self, why: str):
         if self._serial is not None:
             try:
                 self._serial.close()
             except Exception:
                 pass
         self._serial = None
-        self._shown = None
+        self._rx = b""
+        self._connected = False
+        self._why = why
