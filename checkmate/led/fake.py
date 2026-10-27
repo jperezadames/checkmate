@@ -1,67 +1,54 @@
-"""FakeLedController: same methods as LedController, no hardware. Prints an 8x8 text grid."""
+"""FakeLedController (contracts/interfaces.md section 4.4): same methods as LedController, no
+hardware. Always returns {"ok": True} and prints what would be lit as an 8x8 grid, rank 8 on
+top. A bad show() argument is printed as a warning, so mistakes still show up."""
 
-from checkmate.errors import err
-from checkmate.led.frames import check_frame, move_frame, render_grid
+from checkmate.led.squares import FILES, RANKS, check_squares
+
+ROLE_CHARS = {"engine_from": "F", "engine_to": "T", "hint_from": "f", "hint_to": "t",
+              "error": "X", "check": "C", "last_move": "L"}
+
+
+def render_grid(squares: list) -> str:
+    roles = {item["sq"]: item["role"] for item in squares}
+    lines = ["  " + " ".join(FILES)]
+    for rank in reversed(RANKS):
+        lines.append(rank + " " + " ".join(ROLE_CHARS[roles[f + rank]] if f + rank in roles else "."
+                                           for f in FILES))
+    used = [role for role in ROLE_CHARS if role in roles.values()]
+    if used:
+        lines.append("  " + ", ".join(f"{ROLE_CHARS[role]} {role}" for role in used))
+    return "\n".join(lines)
 
 
 class FakeLedController:
-    """Tests can read `frame` / `history`, and set `fail = True` to simulate an unplugged Pico."""
-
-    def __init__(self, config: dict = None, echo: bool = True):
-        config = config or {}
-        self.echo = config.get("echo", echo)
-        self.frame = {}
-        self.history = []  # every frame shown, in order (repeats are not recorded)
-        self.fail = False
-        self.started = False
-
-    @property
-    def connected(self) -> bool:
-        return self.started and not self.fail
+    def __init__(self, config: dict = None):
+        pass
 
     def start(self) -> dict:
-        if self.fail:
-            return err("LED_NOT_READY", "fake LED board set to fail")
-        self.started = True
-        return {"ok": True, "port": "fake", "firmware": "fake"}
+        return {"ok": True, "fw": "fake"}
 
     def close(self) -> None:
-        self.frame = {}
-        self.started = False
+        pass
 
-    def show(self, frame: dict) -> dict:
-        problem = check_frame(frame)
+    def show(self, squares: list) -> dict:
+        problem = check_squares(squares)
         if problem:
-            return err("BAD_REQUEST", problem)
-        if self.fail:
-            return err("LED_NOT_READY", "fake LED board set to fail")
-        self.started = True  # like the real one, connects on first use
-        if frame != self.frame:
-            self.frame = dict(frame)
-            self.history.append(dict(frame))
-            if self.echo:
-                print("LEDs:\n" + render_grid(self.frame), flush=True)
+            print(f"[fake LED] warning, the real board would return BAD_REQUEST: {problem}", flush=True)
+        else:
+            print("[fake LED]\n" + render_grid(squares), flush=True)
         return {"ok": True}
 
-    def show_move(self, move: dict) -> dict:
-        if not isinstance(move, dict) or not move.get("from") or not move.get("to"):
-            return err("BAD_REQUEST", "move must be a dict with 'from' and 'to'")
-        return self.show(move_frame(move))
-
-    def show_hint(self, move: dict) -> dict:
-        if not isinstance(move, dict) or not move.get("from") or not move.get("to"):
-            return err("BAD_REQUEST", "move must be a dict with 'from' and 'to'")
-        return self.show(move_frame(move, "hint", "hint"))
-
-    def show_problem(self, squares) -> dict:
-        if not isinstance(squares, (list, tuple)):
-            return err("BAD_REQUEST", "squares must be a list of square names")
-        return self.show({square: "problem" for square in squares})
-
     def clear(self) -> dict:
-        return self.show({})
+        print("[fake LED] clear", flush=True)
+        return {"ok": True}
 
-    def test_pattern(self) -> dict:
-        if self.fail:
-            return err("LED_NOT_READY", "fake LED board set to fail")
-        return self.show({"a1": "capture", "h1": "from", "h8": "to", "a8": "hint"})
+    def set_brightness(self, percent: int) -> dict:
+        print(f"[fake LED] brightness {percent}%", flush=True)
+        return {"ok": True}
+
+    def self_test(self) -> dict:
+        print("[fake LED] self test: a1, h1, h8, a8", flush=True)
+        return {"ok": True}
+
+    def is_connected(self) -> bool:
+        return True

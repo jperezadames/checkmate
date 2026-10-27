@@ -496,7 +496,7 @@ What main sends for the computer's move (`m = engine.get_engine_move()`):
 - The Pi keeps the port open the whole time (DTR on). The Pico only sends output while a host has the port open.
 
 **Framing**
-- One JSON object per line, UTF-8/ASCII, ends with `\n`, max 512 bytes per line.
+- One JSON object per line, UTF-8/ASCII, ends with `\n`, max 4096 bytes per line (a `set` with all 64 squares is about 2.2 KB).
 - The Pi sends **one command at a time** and waits for the reply with the same `id` before sending the next.
 - `id`: int, starts at 1, +1 per command, wraps after 2³¹.
 - The Pico answers **every** command with exactly one line.
@@ -537,7 +537,7 @@ What main sends for the computer's move (`m = engine.get_engine_move()`):
 | `BAD_CMD` | unknown `cmd` |
 | `BAD_SQUARE` | square not `a1`–`h8` |
 | `BAD_ROLE` | unknown role |
-| `TOO_LONG` | line longer than 512 bytes (reply `id` is `null`) |
+| `TOO_LONG` | line longer than 4096 bytes (reply `id` is `null`) |
 
 On the Pi, any Pico error becomes `{"ok": false, "error": "LED_REJECTED", "message": "<pico error>: <pico message>"}`.
 

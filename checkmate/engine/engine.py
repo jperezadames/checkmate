@@ -9,7 +9,7 @@ the limited Elo chosen for the game; get_hint() and rate_last_move() use full st
 import chess
 import chess.engine
 
-from checkmate.engine.base import BaseChessGame
+from checkmate.engine.base import ELO_MAX, ELO_MIN, BaseChessGame
 from checkmate.errors import err
 
 # Large finite value standing in for a forced mate when turning scores into centipawns, so
@@ -38,12 +38,13 @@ class GameEngine(BaseChessGame):
 
     def start(self) -> dict:
         if self._engine is not None:
-            return {
-                "ok": True,
-                "engine_name": self._engine_name,
-                "elo_min": self._elo_min,
-                "elo_max": self._elo_max,
-            }
+            # Called again after an ENGINE_ERROR (section 3.5): keep a live Stockfish,
+            # replace a crashed or hung one. The board and the game are kept either way.
+            try:
+                self._engine.ping()
+                return self._start_info()
+            except Exception:
+                self.close()
         path = self._config.get("stockfish_path")
         try:
             engine = chess.engine.SimpleEngine.popen_uci(path)
@@ -57,16 +58,11 @@ class GameEngine(BaseChessGame):
         self._engine = engine
         self._engine_name = engine.id.get("name", "Stockfish")
         elo_opt = engine.options.get("UCI_Elo")
-        self._elo_min = int(elo_opt.min) if elo_opt and elo_opt.min is not None else 1320
-        self._elo_max = int(elo_opt.max) if elo_opt and elo_opt.max is not None else 3190
+        self._elo_min = int(elo_opt.min) if elo_opt and elo_opt.min is not None else ELO_MIN
+        self._elo_max = int(elo_opt.max) if elo_opt and elo_opt.max is not None else ELO_MAX
         self._started = True
         self._limited_now = None
-        return {
-            "ok": True,
-            "engine_name": self._engine_name,
-            "elo_min": self._elo_min,
-            "elo_max": self._elo_max,
-        }
+        return self._start_info()
 
     def close(self) -> None:
         if self._engine is not None:
@@ -78,7 +74,9 @@ class GameEngine(BaseChessGame):
         self._started = False
 
     def _on_new_game(self) -> None:
-        # Play at the chosen Elo until a full-strength call (hint/rating) toggles it.
+        # Play at the chosen Elo until a full-strength call (hint/rating) toggles it. Forget
+        # the cache first: the new game's Elo may differ from the one Stockfish has.
+        self._limited_now = None
         self._apply_strength(limited=True)
 
     # -- strength toggle -------------------------------------------------------------------
