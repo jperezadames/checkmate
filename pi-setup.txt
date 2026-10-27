@@ -8,17 +8,20 @@ Target: Raspberry Pi 5, Raspberry Pi OS (Bookworm or Trixie).
    Not Python packages — installed with apt, not pip.
 
      sudo apt update
-     sudo apt install stockfish python3-picamera2
+     sudo apt install stockfish
 
    - stockfish          Chess engine binary at /usr/games/stockfish
                         (the path config.json expects).
-   - python3-picamera2  Pi camera stack. Must come from apt, which is why the
-                        virtual environment below uses --system-site-packages.
-   - Chromium           Ships with Raspberry Pi OS; displays the touchscreen UI.
+   - Chromium           Ships with Raspberry Pi OS; shows the UI on the screen.
+   - python3-picamera2  Only for the Raspberry Pi camera module
+                        ("backend": "picamera2" in config.json). The USB webcam
+                        ("v4l2", the default) doesn't need it. It must come from
+                        apt, which is why the venv below uses --system-site-packages.
 
 
 2. PYTHON ENVIRONMENT
-   Create the venv with --system-site-packages so Picamera2 stays visible.
+   Create the venv with --system-site-packages so Picamera2 stays visible
+   (harmless when you use the USB webcam).
 
      python3 -m venv --system-site-packages .venv
      .venv/bin/pip install -r requirements.txt
@@ -49,7 +52,7 @@ Target: Raspberry Pi 5, Raspberry Pi OS (Bookworm or Trixie).
 
      .venv/bin/uvicorn checkmate.server:app --host 127.0.0.1 --port 8000
 
-   Then open http://127.0.0.1:8000 in Chromium (kiosk mode on the touchscreen).
+   Then open http://127.0.0.1:8000 in Chromium (kiosk mode on the screen).
 
 
 NOTES

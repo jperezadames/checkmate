@@ -16,7 +16,7 @@ If you need to change anything here (a field name, a function, a message), tell 
 | Engine / game state | Joel | Raspberry Pi | Python 3 + python-chess + Stockfish | `checkmate/engine/`: class `GameEngine`, `FakeGameEngine` |
 | LED (Pi side) | Hsin-Chen | Raspberry Pi | Python 3 + pyserial | `checkmate/led/`: class `LedController`, `FakeLedController` |
 | LED (firmware) | Hsin-Chen | Pico | MicroPython | `pico/main.py` |
-| UI | Jayden | Chromium (kiosk) on the touchscreen | HTML/JS or TS (any frontend framework) | built static files in `ui/dist/`, talking to the backend over the API in section 5 |
+| UI | Jayden | Chromium (kiosk) on the screen beside the board | HTML/JS or TS (any frontend framework) | built static files in `ui/dist/`, talking to the backend over the API in section 5 |
 | Backend server + main loop | everyone | Raspberry Pi | Python 3 + **FastAPI** + uvicorn | `checkmate/server/` (FastAPI app), `checkmate/game/` (game loop) |
 
 ### 0.2 How the pieces connect
@@ -35,7 +35,7 @@ If you need to change anything here (a field name, a function, a message), tell 
             ┌───────────────┘          │          └───────────────┐
             ▼                          ▼                          ▼
    Camera (Harry)              GameEngine (Joel)          LedController (Hsin-Chen)
-   OpenCV, Picamera2           python-chess +                    │ USB serial, JSON lines
+   OpenCV, USB webcam          python-chess +                    │ USB serial, JSON lines
                                /usr/games/stockfish              ▼
                                                            Pico firmware → 16×16 LEDs
 ```
@@ -149,7 +149,7 @@ One file, one section per module. Each module only reads its own section.
 ```json
 {
   "camera": {
-    "backend": "picamera2",
+    "backend": "v4l2",
     "device_index": 0,
     "width": 1280,
     "height": 720,
@@ -567,6 +567,8 @@ Use `test` to check the mapping: if a1, h1, h8, a8 light up in the right corners
 
 The UI **shows state and sends commands**. It never decides anything about the game itself: no legal-move checking, no clock, no game state of its own.
 
+**Input is 4 buttons, no touch and no mouse.** The buttons arrive as the keys ← → Enter Esc (`gpio-key` on the Pi, see `pi-setup.txt`), so every screen must be usable with those 4 keys alone: ← → move the focus (and change a focused slider), Enter activates, Esc goes back or cancels. A USB keyboard works the same way for testing.
+
 ### 5.1 Backend: FastAPI server (`checkmate/server/`)
 
 The backend is a **FastAPI** app run by uvicorn on the Pi:
@@ -594,7 +596,7 @@ curl -X POST http://127.0.0.1:8000/api/command -H 'Content-Type: application/jso
 **WebSocket rules (`/ws`)**
 - Each text message is one JSON object with a `"type"` field.
 - On connect, the server immediately sends `info`, then the current `state`. After that it sends a new full `state` **every time anything changes**. The UI always renders the newest `state` and never merges partial updates.
-- Several clients may connect (e.g. the touchscreen plus a laptop for debugging); all get the same messages.
+- Several clients may connect (e.g. the screen plus a laptop for debugging); all get the same messages.
 - If the connection drops, the UI reconnects every 1 s and shows "Connecting…" meanwhile.
 
 **Threads inside the backend**
