@@ -1,0 +1,48 @@
+CheckMate — Raspberry Pi Setup
+Things to install on the Pi before running the system.
+
+Target: Raspberry Pi 5, Raspberry Pi OS (Bookworm or Trixie).
+
+
+1. SYSTEM PACKAGES (apt)
+   Not Python packages — installed with apt, not pip.
+
+     sudo apt update
+     sudo apt install stockfish python3-picamera2
+
+   - stockfish          Chess engine binary at /usr/games/stockfish
+                        (the path config.json expects).
+   - python3-picamera2  Pi camera stack. Must come from apt, which is why the
+                        virtual environment below uses --system-site-packages.
+   - Chromium           Ships with Raspberry Pi OS; displays the touchscreen UI.
+
+
+2. PYTHON ENVIRONMENT
+   Create the venv with --system-site-packages so Picamera2 stays visible.
+
+     python3 -m venv --system-site-packages .venv
+     .venv/bin/pip install -r requirements.txt
+
+   requirements.txt (runtime):
+     python-chess   engine: board state + Stockfish interface
+     numpy (<2)     camera math (pinned for Picamera2 compatibility)
+     opencv-python  camera vision / ArUco detection
+     fastapi        backend server
+     uvicorn        runs the server
+
+   Note: pyserial will be added to requirements.txt once the LED controller
+   is implemented (Pi-to-Pico serial link).
+
+
+3. RUN
+
+     .venv/bin/uvicorn checkmate.server:app --host 127.0.0.1 --port 8000
+
+   Then open http://127.0.0.1:8000 in Chromium (kiosk mode on the touchscreen).
+
+
+NOTES
+   - requirements-dev.txt = requirements.txt + pytest + httpx (tests only).
+     Needed only to run the test suite; not required to run the system.
+   - The Pico LED firmware is uploaded to the Pico separately with mpremote;
+     it is not installed on the Pi.
