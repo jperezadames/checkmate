@@ -226,10 +226,12 @@ def handle_line(leds, line, now=0):
 
 
 def main():
-    import micropython
+    # import micropython
     import select
 
-    micropython.kbd_intr(-1)  # a 0x03 byte in the data must not stop the program (section 4.5)
+    # micropython.kbd_intr(-1)  # a 0x03 byte in the data must not stop the program (section 4.5)
+    # The above line was removed on Oct 29. The firmware can’t receive a real Ctrl-C from the Pi, so turning it off only locks us out.
+    
     leds = Leds(neopixel.NeoPixel(machine.Pin(DATA_PIN), NUM_LEDS))
     leds.boot(time.ticks_ms())  # the 4 corners for 1 s, then off
     poll = select.poll()
