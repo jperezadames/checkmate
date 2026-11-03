@@ -8,6 +8,9 @@ __pycache__/
 # Local camera calibration (depends on each physical setup)
 calibration.json
 
+# Local config override (CHECKMATE_CONFIG), e.g. another stockfish_path on a laptop
+config.local.json
+
 # Frontend
 ui/node_modules/
 
