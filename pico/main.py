@@ -226,12 +226,10 @@ def handle_line(leds, line, now=0):
 
 
 def main():
-    # import micropython
     import select
 
-    # micropython.kbd_intr(-1)  # a 0x03 byte in the data must not stop the program (section 4.5)
-    # The above line was removed on Oct 29. The firmware can’t receive a real Ctrl-C from the Pi, so turning it off only locks us out.
-    
+    # Ctrl-C stays on: mpremote stops this program with it before uploading (section 4.5).
+    # The Pi only sends json.dumps lines, so a 0x03 byte never comes in the data.
     leds = Leds(neopixel.NeoPixel(machine.Pin(DATA_PIN), NUM_LEDS))
     leds.boot(time.ticks_ms())  # the 4 corners for 1 s, then off
     poll = select.poll()
