@@ -652,10 +652,10 @@ curl -X POST http://127.0.0.1:8000/api/command -H 'Content-Type: application/jso
 | `moves_san` | list | move list for display |
 | `last_move` | UCI or `null` | highlight on the on-screen board |
 | `in_check` | bool | |
-| `engine_move` | dict or `null` | set only in `engine_move_pending`; same fields as `get_engine_move()` (3.5) |
+| `engine_move` | dict or `null` | set only in `engine_move_pending`; same fields as `get_engine_move()` (3.5) without `ok` |
 | `promotion` | dict or `null` | set only in `promotion_choice`: `{"from": "e7", "to": "e8", "choices": ["q","r","b","n"]}` |
-| `hint` | dict or `null` | last requested hint, same fields as `get_hint()`; cleared after the next move |
-| `rating` | dict or `null` | both modes: rating of the latest confirmed move (human or bot), same fields as `rate_last_move()` (3.7); `played` must match `last_move` |
+| `hint` | dict or `null` | last requested hint, same fields as `get_hint()` without `ok`; cleared after the next move |
+| `rating` | dict or `null` | both modes: rating of the latest confirmed move (human or bot), same fields as `rate_last_move()` (3.7) without `ok`; `played` must match `last_move` |
 | `evaluation` | dict or `null` | both modes: evaluation of the current confirmed position; see 5.3.1 |
 | `board_problem` | dict or `null` | physical board doesn't match: `{"squares": ["e2","e5"], "text": "Board doesn't match. Put the pieces back."}` |
 | `result`, `termination` | | same as `engine.state()` |
