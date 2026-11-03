@@ -15,7 +15,6 @@ export interface MoveDetails {
 }
 
 export interface Rating {
-  ok: true;
   played: string;
   played_san: string;
   best: string;
@@ -59,3 +58,15 @@ export interface GameState {
 
 export interface GameConfig { humanColor: Color | 'random'; elo: number }
 export interface PreviewConfig { humanColor: Color; elo: number }
+
+/** Sent once per connection, before the first state (contracts/interfaces.md §5.2). */
+export interface Info { type: 'info'; version: string; elo_min: number; elo_max: number; engine_name: string | null }
+
+/** Short notification, shown for about 3 s (§5.6). */
+export interface Toast { type: 'toast'; level: 'info' | 'warning' | 'error'; text: string }
+
+/** UI → backend commands (§5.5). Which phase allows which: §5.4. */
+export type Command =
+  | { type: 'start_game'; human_color: Color | 'random'; elo: number; mode: 'play' | 'practice' }
+  | { type: 'hint' | 'resign' | 'cancel' | 'calibrate' | 'retry' }
+  | { type: 'promote'; piece: PieceChoice };

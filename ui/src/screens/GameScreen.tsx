@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ArrowLeft, Settings, X } from 'lucide-react';
+import { ArrowLeft, Lightbulb, Settings, X } from 'lucide-react';
 import ChessBoard from '../components/ChessBoard';
 import EvaluationBar from '../components/EvaluationBar';
 import MoveHistory from '../components/MoveHistory';
@@ -11,9 +11,9 @@ import Button from '../components/Button';
 import type { GameState, PieceChoice } from '../types/game';
 import './GameScreen.css';
 
-type Props = { state: GameState; connected: boolean; onLeave: () => void; onNewGame: () => void; onResign: () => void; onPromote: (piece: PieceChoice) => void; onRetry: () => void };
+type Props = { state: GameState; connected: boolean; onLeave: () => void; onNewGame: () => void; onResign: () => void; onPromote: (piece: PieceChoice) => void; onRetry: () => void; onHint?: () => void; onCalibrate?: () => void; onBoardMove?: (move: string) => void; sample?: boolean };
 
-export default function GameScreen({ state, connected, onLeave, onNewGame, onResign, onPromote, onRetry }: Props) {
+export default function GameScreen({ state, connected, onLeave, onNewGame, onResign, onPromote, onRetry, onHint, onCalibrate, onBoardMove, sample = true }: Props) {
   const [settings, setSettings] = useState(false);
   const [confirm, setConfirm] = useState<'leave' | 'resign' | null>(null);
   const [showEvaluation, setShowEvaluation] = useState(true);
@@ -30,26 +30,27 @@ export default function GameScreen({ state, connected, onLeave, onNewGame, onRes
 
   return <main className="game-screen">
     <header className="game-header">
-      <div className="game-heading"><button className="icon-button" type="button" aria-label="Leave game" onClick={() => setConfirm('leave')}><ArrowLeft size={20} aria-hidden="true" /></button><span className="game-wordmark">CheckMate</span><span className="game-mode-name">/ Play vs Bot</span></div>
-      <div className="game-header-actions"><span className="sample-label">SAMPLE GAME</span><button className="icon-button" type="button" aria-label="Game settings" onClick={() => setSettings(true)}><Settings size={20} aria-hidden="true" /></button></div>
+      <div className="game-heading"><button className="icon-button" type="button" aria-label="Leave game" data-back onClick={() => setConfirm('leave')}><ArrowLeft size={20} aria-hidden="true" /></button><span className="game-wordmark">CheckMate</span><span className="game-mode-name">/ Play vs Bot</span></div>
+      <div className="game-header-actions">{sample && <span className="sample-label">SAMPLE GAME</span>}<button className="icon-button" type="button" aria-label="Game settings" onClick={() => setSettings(true)}><Settings size={20} aria-hidden="true" /></button></div>
     </header>
     <div className="game-grid">
       <section className="board-column" aria-label="Current position">
         <div className="player-label">{player(orientation === 'white' ? 'black' : 'white')}</div>
         <div className={`board-and-evaluation${!showEvaluation ? ' no-evaluation' : ''}`}>
           {showEvaluation && <EvaluationBar evaluation={evaluation} flipped={orientation === 'black'} />}
-          <ChessBoard fen={state.fen} orientation={orientation} lastMove={state.last_move} pendingSquares={pendingSquares} problemSquares={state.board_problem?.squares ?? []} checkedColor={state.in_check ? state.turn : null} />
+          <ChessBoard fen={state.fen} orientation={orientation} lastMove={state.last_move} pendingSquares={pendingSquares} problemSquares={state.board_problem?.squares ?? []} checkedColor={state.in_check ? state.turn : null} onMove={onBoardMove} />
         </div>
         <div className="player-label player-label-bottom">{player(orientation)}</div>
       </section>
       <aside className="game-sidebar">
         <GameStatus state={state} connected={connected} />
+        {onHint && state.phase === 'human_turn' && <Button disabled={!connected} onClick={onHint} data-autofocus><Lightbulb size={18} aria-hidden="true" />Hint</Button>}
         {state.phase === 'promotion_choice' && state.promotion && <PromotionPicker pieces={state.promotion.choices} color={humanColor} onChoose={onPromote} disabled={!connected} />}
         {showFeedback && !['promotion_choice', 'setup_check', 'error', 'game_over'].includes(state.phase) && <MoveFeedback state={state} />}
         {!['promotion_choice', 'setup_check', 'error'].includes(state.phase) && <MoveHistory moves={state.moves_san} />}
         {state.phase === 'setup_check' && <div className="setup-instruction">White pieces on ranks 1–2.<br />Black pieces on ranks 7–8.<br /><span>Waiting for the camera to verify your board.</span></div>}
-        {state.phase === 'error' && <Button disabled={!connected} onClick={onRetry}>Try again</Button>}
-        {state.phase === 'game_over' && <div className="game-end-actions"><Button className="primary-action" onClick={onNewGame}>Play again</Button><Button onClick={onLeave}>Main menu</Button></div>}
+        {state.phase === 'error' && <div className="game-end-actions"><Button disabled={!connected} onClick={onRetry} data-autofocus>Try again</Button>{onCalibrate && <Button disabled={!connected} onClick={onCalibrate}>Calibrate camera</Button>}</div>}
+        {state.phase === 'game_over' && <div className="game-end-actions"><Button className="primary-action" onClick={onNewGame} data-autofocus>Play again</Button><Button onClick={onLeave}>Main menu</Button></div>}
         <p className="game-footnote">{connected ? 'Play on your physical board.' : 'Live updates unavailable.'}</p>
       </aside>
     </div>

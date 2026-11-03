@@ -1,5 +1,6 @@
 """Frame sources: each has read() -> BGR numpy image (or None) and close()."""
 
+import sys
 import time
 
 import cv2
@@ -38,7 +39,9 @@ class Picamera2Source:
 
 class V4l2Source:
     def __init__(self, device_index, width, height):
-        self.cap = cv2.VideoCapture(device_index, cv2.CAP_V4L2)
+        # V4L2 only exists on Linux; elsewhere (a Mac while developing) let OpenCV choose.
+        api = cv2.CAP_V4L2 if sys.platform.startswith("linux") else cv2.CAP_ANY
+        self.cap = cv2.VideoCapture(device_index, api)
         if not self.cap.isOpened():
             raise RuntimeError(f"cannot open /dev/video{device_index}")
         self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)

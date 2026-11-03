@@ -53,6 +53,7 @@ Target: Raspberry Pi 5, Raspberry Pi OS (Bookworm or Trixie).
      .venv/bin/uvicorn checkmate.server:app --host 127.0.0.1 --port 8000
 
    Then open http://127.0.0.1:8000 in Chromium (kiosk mode on the screen).
+   First run (camera calibration) and troubleshooting: RUNNING.md.
 
 
 NOTES

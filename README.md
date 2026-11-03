@@ -195,6 +195,8 @@ uv pip install -r requirements.txt
 # or: uv run uvicorn checkmate.server:app --host 127.0.0.1 --port 8000
 ```
 
+[RUNNING.md](RUNNING.md): fake modules on a laptop, playing with curl, the first calibration on the Pi, and what to do when a device fails.
+
 ### Layout
 
 Each module is a package under `checkmate/`; import from the package (`from checkmate.camera import Camera`), not from the files inside it. See `contracts/interfaces.md` section 0.4.
@@ -215,8 +217,9 @@ checkmate/
 │   └── fake.py          FakeCamera
 ├── engine/              Joel: GameEngine, FakeGameEngine
 ├── led/                 Hsin-Chen: LedController, FakeLedController
-├── server/              FastAPI app (app.py) and /api routes (api.py)
-└── game/                game loop (loop.py), not implemented yet
+├── server/              FastAPI app (app.py), /api routes (api.py), /ws (ws.py),
+│                        hub.py between the routes and the loop thread, /api/fake/* (fake.py)
+└── game/                game loop (loop.py), command rules (commands.py)
 pico/main.py             Hsin-Chen: Pico LED firmware
 ui/                      Jayden: frontend, built into ui/dist/
 scripts/<module>/        manual tools, e.g. scripts/camera/preview.py (press c to calibrate, q to quit)

@@ -555,7 +555,7 @@ Use `test` to check the mapping: if a1, h1, h8, a8 light up in the right corners
 `FakeLedController` has the same methods, always returns `{"ok": true}`, and prints the board as an 8×8 text grid (rank 8 on top) with role letters, so teammates can see what would be lit.
 
 ### 4.5 Technical notes (from official docs)
-- In `main.py` call `micropython.kbd_intr(-1)`, so a `0x03` byte in the data doesn't stop the program.
+- Leave Ctrl-C on (don't call `micropython.kbd_intr(-1)`): `mpremote` stops `main.py` with a `0x03` byte before uploading, and without it the Pico can only be wiped. The Pi sends only `json.dumps` lines, which never contain a raw `0x03`.
 - Read input with `select.poll()` on `sys.stdin`, then `sys.stdin.read(1)` one character at a time. A known MicroPython bug makes `read()` with no size block.
 - WS2812 (NeoPixel): `neopixel.NeoPixel(Pin(n), 256)`, `np[i] = (r, g, b)`, then `np.write()`. Writing 256 LEDs takes about 8 ms, which is fine for blinking at 2 Hz.
 - Power: each WS2812 draws up to ~60 mA at full white, so 256 LEDs could draw up to **~15 A**. In practice at most ~32 squares (128 LEDs) are lit at once (e.g. `error` on every wrong square during setup), about 3 A with brightness capped at 40%. Use an **external 5 V supply** (at least 5 V 4 A, shared ground with the Pico), never the Pico's own 5 V. Put a level shifter on the data line, and **cap brightness in firmware** (e.g. max 40%).
@@ -652,10 +652,10 @@ curl -X POST http://127.0.0.1:8000/api/command -H 'Content-Type: application/jso
 | `moves_san` | list | move list for display |
 | `last_move` | UCI or `null` | highlight on the on-screen board |
 | `in_check` | bool | |
-| `engine_move` | dict or `null` | set only in `engine_move_pending`; same fields as `get_engine_move()` (3.5) |
+| `engine_move` | dict or `null` | set only in `engine_move_pending`; same fields as `get_engine_move()` (3.5) without `ok` |
 | `promotion` | dict or `null` | set only in `promotion_choice`: `{"from": "e7", "to": "e8", "choices": ["q","r","b","n"]}` |
-| `hint` | dict or `null` | last requested hint, same fields as `get_hint()`; cleared after the next move |
-| `rating` | dict or `null` | both modes: rating of the latest confirmed move (human or bot), same fields as `rate_last_move()` (3.7); `played` must match `last_move` |
+| `hint` | dict or `null` | last requested hint, same fields as `get_hint()` without `ok`; cleared after the next move |
+| `rating` | dict or `null` | both modes: rating of the latest confirmed move (human or bot), same fields as `rate_last_move()` (3.7) without `ok`; `played` must match `last_move` |
 | `evaluation` | dict or `null` | both modes: evaluation of the current confirmed position; see 5.3.1 |
 | `board_problem` | dict or `null` | physical board doesn't match: `{"squares": ["e2","e5"], "text": "Board doesn't match. Put the pieces back."}` |
 | `result`, `termination` | | same as `engine.state()` |
@@ -731,7 +731,15 @@ For a command that isn't allowed or is malformed, or a one-off event:
 `level`: `"info"`, `"warning"`, `"error"`. Show it for ~3 s. A rejected command does **not** change `state`. (Over `/api/command`, the same rejection comes back as HTTP `400` with `NOT_ALLOWED` or `BAD_REQUEST`.)
 
 ### 5.7 Fake backend
-Until the real game loop is ready, the FastAPI server can run with **fake modules** (`FakeCamera`, `FakeGameEngine`, `FakeLedController`) on any laptop. It exposes the same endpoints (5.1). In addition, a debug-only endpoint `POST /api/fake/state` (body = a `state` object) broadcasts that state as-is, so Jayden can show every phase in 5.4 (including `board_problem`, `promotion`, `rating`, `game_over`) without playing a game. The fake server logs every command it receives.
+The FastAPI server can run with **fake modules** (`FakeCamera`, `FakeGameEngine`, `FakeLedController`) on any laptop: `CHECKMATE_FAKE=all` (or some of `camera,engine,led`) before `uvicorn`. It exposes the same endpoints (5.1) and runs the real game loop. In addition, these debug-only endpoints exist only in that mode:
+
+| Method | Path | Request | Purpose |
+|---|---|---|---|
+| `GET` | `/api/fake` | none | `{"ok": true, "modules": ["camera", "led"]}`: which modules are fake. With a fake camera, the UI lets you click moves on its board (they go to `/api/fake/board`); a 404 means nothing is fake |
+| `POST` | `/api/fake/state` | a `state` object | broadcasts that state as-is, so Jayden can show every phase in 5.4 (including `board_problem`, `promotion`, `rating`, `game_over`) without playing a game; the loop's next change replaces it |
+| `POST` | `/api/fake/board` | `{"move": "e2e4"}`, `{"fen": "..."}` or `{"occupancy": "..."}`, optionally with `"stable": false` | what the fake camera sees: the position in `state.fen` after that move (in `engine_move_pending` that plays the computer's move), a whole position (e.g. `START_FEN` before a new game), or any occupancy (e.g. a wrong board) |
+
+The server logs every command it receives.
 
 ---
 
