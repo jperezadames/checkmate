@@ -22,7 +22,7 @@ const AFTER_D3 = 'r1bqk1nr/pppp1ppp/2n5/2b1p3/2B1P3/3P1N2/PPP2PPP/RNBQK2R b KQkq
 const OPENING = ['e4', 'e5', 'Nf3', 'Nc6', 'Bc4', 'Bc5'];
 
 function sampleRating(move: string, san: string): Rating {
-  return { ok: true, played: move, played_san: san, best: move, best_san: san, score_before: 30, score_after: 30, mate_in: null, cp_loss: 0, rating: 'best' };
+  return { played: move, played_san: san, best: move, best_san: san, score_before: 30, score_after: 30, mate_in: null, cp_loss: 0, rating: 'best' };
 }
 
 /** Illustrative snapshots, not a simulated engine. Scores are sample data. */
@@ -92,7 +92,7 @@ export function createGameState(scenario: Scenario, config: PreviewConfig): Game
     state.fen = 'rnbqkbnr/pppppppp/8/8/8/5P2/PPPPP1PP/RNBQKBNR b KQkq - 0 1';
     state.turn = 'black'; state.phase = white ? 'engine_thinking' : 'human_turn';
     state.moves_san = ['f3']; state.last_move = 'f2f3';
-    state.rating = { ok: true, played: 'f2f3', played_san: 'f3', best: 'g1f3', best_san: 'Nf3', score_before: 30, score_after: -145, mate_in: null, cp_loss: 175, rating: 'mistake' };
+    state.rating = { played: 'f2f3', played_san: 'f3', best: 'g1f3', best_san: 'Nf3', score_before: 30, score_after: -145, mate_in: null, cp_loss: 175, rating: 'mistake' };
     state.evaluation = { fen: state.fen, score_cp: -145, mate_in: null };
     state.message = white ? 'The computer is choosing its move.' : 'Make your move on the physical board.';
   }

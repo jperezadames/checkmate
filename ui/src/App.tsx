@@ -1,71 +1,77 @@
 import { useState } from 'react';
-import { ArrowLeft } from 'lucide-react';
 import Button from './components/Button';
-import Modal from './components/Modal';
 import ScreenShell from './components/ScreenShell';
+import Toasts from './components/Toasts';
 import TouchscreenPreview from './components/TouchscreenPreview';
+import TrainingDialog from './components/TrainingDialog';
 import MainMenu from './screens/MainMenu';
 import GameSetup from './screens/GameSetup';
 import GameScreen from './screens/GameScreen';
-import { createGameState, previewPromotion, SCENARIOS, type Scenario } from './mocks/gameStates';
-import type { GameConfig, GameState, PreviewConfig } from './types/game';
+import PreviewApp from './PreviewApp';
+import { backendUrl, useBackend } from './backend';
+import { useKeyNavigation } from './keys';
+
+const MOCK = new URLSearchParams(window.location.search).has('mock');
+const START_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
 
 export default function App() {
-  const [screen, setScreen] = useState<'menu' | 'setup' | 'game'>('menu');
+  useKeyNavigation();
+  return MOCK ? <PreviewApp /> : <LiveApp />;
+}
+
+/** Shows the backend's newest state (§5.3) and sends commands (§5.5). The game itself lives in the backend. */
+function LiveApp() {
+  const { connected, info, state, toasts, send, fakeCamera, fakeBoard } = useBackend();
+  const [screen, setScreen] = useState<'menu' | 'setup'>('menu');
   const [trainingDialog, setTrainingDialog] = useState(false);
-  const [config, setConfig] = useState<PreviewConfig>({ humanColor: 'white', elo: 1500 });
-  const [scenario, setScenario] = useState<Scenario>('human_turn');
-  const [state, setState] = useState<GameState>(() => createGameState('human_turn', config));
+  // Every phase but idle is shown on the game screen, also after a reload in the middle of a game.
+  const game = state && state.phase !== 'idle' ? state : null;
+  const uncalibrated = state?.phase === 'idle' && state.devices.camera === 'error';
+  // With the fake camera (§5.7) the moves are clicked on the screen's board instead of made on a real one.
+  const engineMove = game?.phase === 'engine_move_pending' ? game.engine_move : null;
+  const boardMoves = fakeCamera && (game?.phase === 'human_turn' || engineMove);
+  const fakeControls = fakeCamera ? <div className="preview-controls">
+    <Button onClick={() => fakeBoard({ fen: START_FEN })}>Start position</Button>
+    {engineMove && <Button onClick={() => fakeBoard({ move: engineMove.move })}>Play the computer’s move</Button>}
+    <span>Fake camera · click a piece on the board, then its square</span>
+  </div> : undefined;
 
-  function startPreview(selection: GameConfig) {
-    const resolved: PreviewConfig = {
-      humanColor: selection.humanColor === 'random' ? (Math.random() < .5 ? 'white' : 'black') : selection.humanColor,
-      elo: selection.elo,
-    };
-    setConfig(resolved);
-    setScenario('human_turn');
-    setState(createGameState('human_turn', resolved));
-    setScreen('game');
+  function leave(next: 'menu' | 'setup') {
+    send({ type: 'cancel' });
+    setScreen(next);
   }
-
-  function chooseScenario(value: Scenario) {
-    setScenario(value);
-    setState(createGameState(value, config));
-  }
-
-  const controls = screen === 'game' ? (
-    <div className="preview-controls">
-      <label htmlFor="preview-state">Preview state</label>
-      <select id="preview-state" value={scenario} onChange={event => chooseScenario(event.target.value as Scenario)}>
-        {SCENARIOS.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}
-      </select>
-      <span>Sample data · Does not control hardware</span>
-    </div>
-  ) : undefined;
 
   return <>
-    <TouchscreenPreview screenName={screen === 'menu' ? 'Main menu' : screen === 'setup' ? 'Play vs Bot setup' : 'Play vs Bot'} controls={controls}>
-      {screen === 'menu' && <ScreenShell><MainMenu onSelectMode={mode => mode === 'play' ? setScreen('setup') : setTrainingDialog(true)} /></ScreenShell>}
-      {screen === 'setup' && <GameSetup onBack={() => setScreen('menu')} onStart={startPreview} />}
-      {screen === 'game' && <GameScreen
-        state={state}
-        connected={scenario !== 'disconnected'}
-        onLeave={() => setScreen('menu')}
-        onNewGame={() => setScreen('setup')}
-        onRetry={() => chooseScenario('human_turn')}
-        onPromote={piece => {
-          setState(current => previewPromotion(current, piece));
-          setScenario('engine_thinking');
-        }}
-        onResign={() => {
-          setState(current => ({ ...current, phase: 'game_over', result: current.human_color === 'white' ? '0-1' : '1-0', termination: 'RESIGNATION', in_check: false, engine_move: null, promotion: null, message: 'The bot wins by resignation.' }));
-          setScenario('game_over');
-        }}
+    <TouchscreenPreview
+      screenName={game ? 'Play vs Bot' : screen === 'menu' ? 'Main menu' : 'Play vs Bot setup'}
+      caption={connected ? `Live · ${backendUrl()}` : `Connecting to ${backendUrl()}…`}
+      controls={fakeControls}
+    >
+      {game && <GameScreen
+        state={game}
+        connected={connected}
+        sample={false}
+        onLeave={() => leave('menu')}
+        onNewGame={() => leave('setup')}
+        onResign={() => send({ type: 'resign' })}
+        onPromote={piece => send({ type: 'promote', piece })}
+        onRetry={() => send({ type: 'retry' })}
+        onHint={() => send({ type: 'hint' })}
+        onCalibrate={() => send({ type: 'calibrate' })}
+        onBoardMove={boardMoves ? move => fakeBoard({ move }) : undefined}
       />}
+      {!game && screen === 'menu' && <ScreenShell><MainMenu onSelectMode={mode => mode === 'play' ? setScreen('setup') : setTrainingDialog(true)} /></ScreenShell>}
+      {!game && screen === 'setup' && <GameSetup
+        sample={false}
+        eloRange={info ? [info.elo_min, info.elo_max] : undefined}
+        disabled={!connected || state?.phase !== 'idle'}
+        notice={!connected ? 'Connecting to the board…' : uncalibrated ? state.message : null}
+        onCalibrate={uncalibrated ? () => send({ type: 'calibrate' }) : undefined}
+        onBack={() => setScreen('menu')}
+        onStart={config => send({ type: 'start_game', human_color: config.humanColor, elo: config.elo, mode: 'play' })}
+      />}
+      <Toasts toasts={toasts} />
     </TouchscreenPreview>
-    {trainingDialog && <Modal title="Training" onClose={() => setTrainingDialog(false)}>
-      <p>Your place to play, get feedback, and ask a chess trainer questions about the game. Training screens are coming next.</p>
-      <Button onClick={() => setTrainingDialog(false)}><ArrowLeft size={18} aria-hidden="true" />Back to menu</Button>
-    </Modal>}
+    {trainingDialog && <TrainingDialog onClose={() => setTrainingDialog(false)} />}
   </>;
 }

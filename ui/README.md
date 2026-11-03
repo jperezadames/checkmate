@@ -12,7 +12,16 @@ npm install
 npm run dev
 ```
 
-Open http://localhost:5173. The dev server updates the browser when you save changes. No camera, LEDs, engine, backend, or touchscreen is needed for the UI preview.
+Open http://localhost:5173. The dev server updates the browser when you save changes.
+
+The page connects to the backend's WebSocket at `ws://127.0.0.1:8000/ws` and shows its live state. Start the backend from the repository root, with fake modules if there's no hardware (see [`../RUNNING.md`](../RUNNING.md)):
+
+```bash
+CHECKMATE_FAKE=all .venv/bin/uvicorn checkmate.server:app
+```
+
+- `?mock=1` shows the sample data instead, with the **Preview state** picker; no backend needed.
+- `?backend=<host>:<port>` connects to another backend, e.g. the Pi's (its server must listen on `0.0.0.0` then).
 
 The development view includes an 800×480 frame when the browser is at least 848 CSS pixels wide. Smaller windows reflow for usability rather than pretending to be an exact-size preview. Use 100% browser zoom to inspect the intended CSS dimensions; physical size varies by laptop display.
 
@@ -20,6 +29,12 @@ Click **Fill window** to hide the preview frame; reload to restore it. To check 
 
 ## Current behavior
 
+- The screen always shows the backend's newest `state`; the UI decides nothing about the game. Any phase but `idle` shows the game screen, also after a reload in the middle of a game. While the connection is down it shows **Connection lost** with the last position, and reconnects every second.
+- Play vs Bot opens color/difficulty setup, then **Start game** sends `start_game`. The difficulty presets use the engine's Elo range from `info`. If the camera isn't calibrated, the setup screen says so and offers **Calibrate camera**.
+- The game screen sends `hint` (button on your turn), `promote`, `resign`, `retry` and `calibrate` (device error), and `cancel` when leaving or before **Play again**. Toasts from the backend appear at the top for 3 s.
+- Every screen works with the 4 console buttons, which arrive as keys (section 5); a laptop keyboard works the same. ← → move the focus through the screen's buttons (or the open dialog's), Enter activates, Esc goes back (the button marked `data-back`) or closes the dialog. The first key on a screen focuses its main button (`data-autofocus`: the chosen color, Hint, Try again, Play again, the first promotion piece).
+- With a fake camera on the backend (`CHECKMATE_FAKE=camera,...`), you play by clicking the screen's board: a piece, then its square (yours on your turn, the computer's while it waits for you). The backend checks the move and the fake camera "sees" it. Above the frame, **Start position** resets the fake board and **Play the computer's move** plays the pending one. With a real camera the board is display-only.
+- The rest of this list describes the sample mode (`?mock=1`).
 - Play vs Bot opens color/difficulty setup, then **Open game preview** displays an illustrative game snapshot. The board is a display of the physical game, not a place to drag pieces.
 - The game view includes a board, evaluation bar, turn/bot-move instructions, latest-move rating, and scrollable move history.
 - Use **Preview state** above the touchscreen frame to inspect your turn, bot thinking, pending bot move, check, mismatch, promotion, game over, connection loss, setup, device failure, and unavailable analysis. There is also a sample mistake rating. These snapshots do not advance automatically or play a legal game.
@@ -54,6 +69,10 @@ On the Pi, build/copy `ui/dist/` before starting the team's FastAPI server. It s
 - `src/mocks/gameStates.ts` — sample positions, scores, and phase snapshots, isolated from presentation components.
 - `src/styles/theme.css` — colors and shared design tokens.
 - `src/screens/MainMenu.css` — menu layout and interaction states.
-- `src/App.tsx` — navigation and local preview actions; replace its mock state source when wiring the backend.
+- `src/App.tsx` — the live app: navigation from the backend's phase, buttons → commands. `?mock=1` renders `src/PreviewApp.tsx` instead (sample data, local preview actions).
+- `src/backend.ts` — `useBackend()`: the WebSocket, reconnecting, newest `info` / `state`, toasts, `send(command)`, and the fake board (`fakeCamera`, `fakeBoard(...)`).
+- `src/keys.ts` — `useKeyNavigation()`: ← → Enter Esc for every screen.
 
-Contract: `../contracts/interfaces.md`, section 5. Future integration will render full backend state snapshots and send allowed commands via `/ws`. Game logic remains on the backend. The menu uses the contract's `play` and `practice` mode names. The evaluation and rating additions agreed with Jayden are documented in section 5.3.1; the engine/backend owners still need to implement them. Their modules have not been changed by this UI work.
+Contract: `../contracts/interfaces.md`, section 5. The UI renders full backend state snapshots and sends allowed commands via `/ws`. Game logic remains on the backend. The menu uses the contract's `play` and `practice` mode names. The evaluation and rating additions agreed with Jayden (section 5.3.1) are sent by the backend.
+
+Not done yet: the Training mode, and lighting the hint squares on the on-screen board (the hint is shown as text and on the LEDs).

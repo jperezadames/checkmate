@@ -8,7 +8,7 @@ export default function GameStatus({ state, connected }: { state: GameState; con
   let text = state.message;
   let warning = false;
   if (!connected) { eyebrow = 'CONNECTION LOST'; title = 'Reconnecting…'; text = 'Waiting for live updates. The board shows the last confirmed position.'; warning = true; }
-  else if (state.phase === 'error') { eyebrow = 'DEVICE ERROR'; title = 'Check your camera'; warning = true; }
+  else if (state.phase === 'error') { eyebrow = 'DEVICE ERROR'; title = state.devices.engine === 'error' && state.devices.camera !== 'error' ? 'The engine stopped' : 'Check your camera'; warning = true; }
   else if (problem) { eyebrow = 'CHECK THE BOARD'; title = 'A piece is out of place'; text = `${problem.text} Check: ${problem.squares.join(', ')}.`; warning = true; }
   else if (state.phase === 'setup_check') { eyebrow = 'BOARD SETUP'; title = 'Set up your pieces'; }
   else if (state.phase === 'calibrating') { eyebrow = 'CAMERA SETUP'; title = 'Calibrating…'; }

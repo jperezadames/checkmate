@@ -3,7 +3,7 @@ body { margin: 0; min-width: 320px; background: var(--page); color: var(--text);
 button { font: inherit; color: inherit; -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
 button:enabled { cursor: pointer; }
 button:disabled { cursor: not-allowed; }
-button:focus-visible { outline: 3px solid var(--gold); outline-offset: 4px; }
+button:focus-visible, input:focus-visible { outline: 3px solid var(--gold); outline-offset: 4px; }
 button, a { -webkit-user-select: none; user-select: none; }
 .screen-shell { width: 100%; height: 100%; min-height: 480px; padding: 28px 36px 20px; background: var(--screen); display: flex; flex-direction: column; }
 .screen-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
@@ -25,9 +25,13 @@ button, a { -webkit-user-select: none; user-select: none; }
 .preview-title { margin: 0 0 4px; font-size: 14px; font-weight: 600; }
 .preview-description { margin: 0; color: var(--subtle); font-size: 12px; }
 .preview-size { font-size: 11px; letter-spacing: 1px; color: var(--subtle); margin-left: 12px; }
-.preview-frame { width: 800px; height: 480px; flex-shrink: 0; border-radius: 20px; overflow: hidden; box-shadow: 0 0 0 1px var(--line), 0 24px 80px #0005; }
+.preview-frame { position: relative; width: 800px; height: 480px; flex-shrink: 0; border-radius: 20px; overflow: hidden; box-shadow: 0 0 0 1px var(--line), 0 24px 80px #0005; }
 .preview-caption { color: var(--subtle); font-size: 12px; text-align: center; margin: 20px 0 0; }
-.app-viewport { height: 100dvh; }
+.app-viewport { position: relative; height: 100dvh; }
+.toasts { position: absolute; top: 14px; left: 50%; transform: translateX(-50%); z-index: 10; width: max-content; max-width: calc(100% - 32px); display: flex; flex-direction: column; gap: 6px; pointer-events: none; }
+.toast { padding: 9px 16px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface); font-size: 13px; box-shadow: 0 8px 30px #0006; }
+.toast-warning { border-color: var(--gold); color: var(--gold); }
+.toast-error { border-color: #f6aa91; color: #f6aa91; }
 .mode-dialog { max-width: min(440px, calc(100vw - 40px)); padding: 30px; border: 1px solid var(--line); border-radius: 20px; background: var(--screen); color: var(--text); box-shadow: 0 20px 80px #0007; }
 .mode-dialog::backdrop { background: #07100cbb; }
 .mode-dialog h2 { margin: 10px 0; font-size: 28px; }
