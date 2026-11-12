@@ -27,12 +27,30 @@ The development view includes an 800×480 frame when the browser is at least 848
 
 Click **Fill window** to hide the preview frame; reload to restore it. To check the actual kiosk layout, open http://localhost:5173/?preview=0 and set the browser's responsive viewport to 800×480. `?preview=1` explicitly enables the frame, including in a production preview.
 
+## Rotary navigation + Select
+
+The product uses a rotary encoder and one Select button. Counterclockwise sends `ArrowLeft`, clockwise sends `ArrowRight`, and Select sends `Enter`. On a laptop, use Left, Right, and Enter.
+
+- Rotation moves the gold highlight through enabled controls in a fixed document order, wrapping at either end. Controls need not share a row. Turning never activates an action.
+- Setup has two separate screens: **Choose your color**, then **Choose your difficulty**. Selecting a color advances; selecting a difficulty marks it, and **Start game** confirms. **Back to color** preserves the selections; **Menu** leaves setup.
+- Every screen/dialog has a selectable Menu, Back, Close, Keep Playing, or Leave control. Escape is optional on a laptop and is never needed by the hardware flow.
+- The game starts focused on Settings. Turn to reach Hint (live human turn), move history, and Leave. Promotion starts on Queen, game over on Play Again, and device errors on Try Again. Disabled controls are skipped.
+- Select toggles settings checkboxes. Holding Select does not repeatedly activate actions.
+- Select move history to browse, turn to scroll backward/forward, and Select again to finish. Then rotation resumes control navigation.
+- Dialogs contain navigation and restore the previous focus when closed. Mouse, touch, and Tab still work.
+- Laptop preview controls remain outside rotary navigation.
+- Select the circular arrow in the header to rotate the entire display 180°. The orientation is remembered across screens and reloads.
+
+### Physical input integration
+
+Chromium receives ordinary keyboard events from the Pi. The `checkmate-rotary` service translates encoder detents into Left/Right key taps, and the Pi's `gpio-key` overlay sends Enter for Select. Follow the [Pi wiring and installation steps](../pi-setup.txt) and keep Chromium focused.
+
 ## Current behavior
 
 - The screen always shows the backend's newest `state`; the UI decides nothing about the game. Any phase but `idle` shows the game screen, also after a reload in the middle of a game. While the connection is down it shows **Connection lost** with the last position, and reconnects every second.
 - Play vs Bot opens color/difficulty setup, then **Start game** sends `start_game`. The difficulty presets use the engine's Elo range from `info`. If the camera isn't calibrated, the setup screen says so and offers **Calibrate camera**.
 - The game screen sends `hint` (button on your turn), `promote`, `resign`, `retry` and `calibrate` (device error), and `cancel` when leaving or before **Play again**. Toasts from the backend appear at the top for 3 s.
-- Every screen works with the 4 console buttons, which arrive as keys (section 5); a laptop keyboard works the same. ← → move the focus through the screen's buttons (or the open dialog's), Enter activates, Esc goes back (the button marked `data-back`) or closes the dialog. The first key on a screen focuses its main button (`data-autofocus`: the chosen color, Hint, Try again, Play again, the first promotion piece).
+- Live and sample screens both use rotary navigation plus Select, including the two-step setup flow.
 - With a fake camera on the backend (`CHECKMATE_FAKE=camera,...`), you play by clicking the screen's board: a piece, then its square (yours on your turn, the computer's while it waits for you). The backend checks the move and the fake camera "sees" it. Above the frame, **Start position** resets the fake board and **Play the computer's move** plays the pending one. With a real camera the board is display-only.
 - The rest of this list describes the sample mode (`?mock=1`).
 - Play vs Bot opens color/difficulty setup, then **Open game preview** displays an illustrative game snapshot. The board is a display of the physical game, not a place to drag pieces.
@@ -50,6 +68,7 @@ Click **Fill window** to hide the preview frame; reload to restore it. To check 
 
 ```bash
 npm run typecheck
+npm test
 npm run build
 npm run preview
 ```
@@ -65,13 +84,15 @@ On the Pi, build/copy `ui/dist/` before starting the team's FastAPI server. It s
 - `src/screens/GameScreen.tsx` — phase-driven game layout and display preferences.
 - `src/screens/GameScreen.css` — game, setup, and dialog layout.
 - `src/components/` — shared frame, board, analysis, move list, status, buttons, dialogs, and laptop preview.
+- `src/components/DirectionalNavigation.tsx` — shared focus, arrow movement, Enter activation, and modal boundaries.
+- `src/navigation/spatial.ts` — earlier spatial-navigation helper, unused by rotary navigation.
 - `src/types/game.ts` — types for full contract state snapshots.
 - `src/mocks/gameStates.ts` — sample positions, scores, and phase snapshots, isolated from presentation components.
 - `src/styles/theme.css` — colors and shared design tokens.
 - `src/screens/MainMenu.css` — menu layout and interaction states.
 - `src/App.tsx` — the live app: navigation from the backend's phase, buttons → commands. `?mock=1` renders `src/PreviewApp.tsx` instead (sample data, local preview actions).
 - `src/backend.ts` — `useBackend()`: the WebSocket, reconnecting, newest `info` / `state`, toasts, `send(command)`, and the fake board (`fakeCamera`, `fakeBoard(...)`).
-- `src/keys.ts` — `useKeyNavigation()`: ← → Enter Esc for every screen.
+- `src/keys.ts` — earlier four-button helper, unused; `DirectionalNavigation` handles rotary input.
 
 Contract: `../contracts/interfaces.md`, section 5. The UI renders full backend state snapshots and sends allowed commands via `/ws`. Game logic remains on the backend. The menu uses the contract's `play` and `practice` mode names. The evaluation and rating additions agreed with Jayden (section 5.3.1) are sent by the backend.
 

@@ -1,0 +1,12 @@
+[Unit]
+Description=CheckMate rotary encoder keyboard bridge
+After=systemd-udev-trigger.service
+
+[Service]
+ExecStartPre=/usr/sbin/modprobe uinput
+ExecStart=/usr/bin/python3 /usr/local/lib/checkmate/rotary_keyboard.py
+Restart=on-failure
+RestartSec=5s
+
+[Install]
+WantedBy=multi-user.target

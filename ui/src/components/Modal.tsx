@@ -1,4 +1,5 @@
 import { useEffect, useRef, type ReactNode } from 'react';
+import { FlipDisplayButton } from './TouchscreenPreview';
 
 export default function Modal({ title, children, onClose }: { title: string; children: ReactNode; onClose: () => void }) {
   const dialog = useRef<HTMLDialogElement>(null);
@@ -12,7 +13,7 @@ export default function Modal({ title, children, onClose }: { title: string; chi
       if (previousFocus?.isConnected) previousFocus.focus();
     };
   }, []);
-  return <dialog className="game-dialog" ref={dialog} aria-labelledby={titleId} onClose={() => { if (!dialog.current?.open) onClose(); }}>
-    <h2 id={titleId}>{title}</h2>{children}
+  return <dialog className="game-dialog" data-nav-scope ref={dialog} aria-labelledby={titleId} onClose={() => { if (!dialog.current?.open) onClose(); }}>
+    <h2 id={titleId}>{title}</h2>{children}<FlipDisplayButton />
   </dialog>;
 }

@@ -34,18 +34,50 @@ Target: Raspberry Pi 5, Raspberry Pi OS (Bookworm or Trixie).
      fastapi        backend server
      uvicorn        runs the server
 
-3. BUTTONS
-   The 4 console buttons go straight to the Pi's GPIO (no Pico), each between
-   its pin and GND. These lines in /boot/firmware/config.txt make them ordinary
-   keyboard keys, so the UI only has to handle arrow / Enter / Escape keys:
+3. ROTARY ENCODER AND SELECT
+   Connect a mechanical quadrature encoder and one momentary switch to the
+   Pi's GPIO with the Pi powered off. Use the encoder's push switch or a
+   separate Select button.
 
-     dtoverlay=gpio-key,gpio=17,keycode=105,label="LEFT"
-     dtoverlay=gpio-key,gpio=27,keycode=106,label="RIGHT"
-     dtoverlay=gpio-key,gpio=22,keycode=28,label="ENTER"
-     dtoverlay=gpio-key,gpio=23,keycode=1,label="ESC"
+     Encoder A / CLK  -> GPIO17 (physical pin 11)
+     Encoder B / DT   -> GPIO27 (physical pin 13)
+     Select / SW      -> GPIO22 (physical pin 15)
+     Encoder common and switch ground -> GND (physical pin 14)
 
-   GPIO17 = pin 11, GPIO27 = pin 13, GPIO22 = pin 15, GPIO23 = pin 16,
-   GND = pin 14. Reboot, then check them with `sudo apt install evtest; evtest`.
+   Use 3.3 V logic. If the encoder module has a power input and supports
+   3.3 V operation, connect it to 3.3 V (physical pin 1). A bare mechanical
+   encoder needs only A, B, and ground. Wire a separate Select switch between
+   GPIO22 and ground.
+
+   In /boot/firmware/config.txt, remove the previous CheckMate LEFT, RIGHT,
+   ENTER, and ESC gpio-key lines if present. Add these in the [all] section:
+
+     dtoverlay=rotary-encoder,pin_a=17,pin_b=27,relative_axis,steps-per-period=1
+     dtoverlay=gpio-key,gpio=22,keycode=28,label=CHECKMATE_SELECT
+
+   The rotary overlay reports movement to the bridge, which sends Left/Right.
+   The gpio-key overlay sends Enter directly and debounces the switch. Use the
+   UI's Back or Close control to return.
+
+   From the repo root on the Pi, install the bridge and enable it at boot:
+
+     sudo apt install python3-evdev evtest
+     sudo install -D -m 0644 scripts/pi/rotary_keyboard.py /usr/local/lib/checkmate/rotary_keyboard.py
+     sudo install -m 0644 scripts/pi/checkmate-rotary.service /etc/systemd/system/checkmate-rotary.service
+     sudo systemctl daemon-reload
+     sudo systemctl enable checkmate-rotary.service
+     sudo reboot
+
+   After reboot, check `systemctl status checkmate-rotary.service` and run
+   `sudo evtest`. Select CheckMate Rotary to check that each detent sends
+   one KEY_LEFT or KEY_RIGHT press and release. Select the GPIO keys device
+   to check for KEY_ENTER when pressing Select. Then focus Chromium and try
+   moving through color, difficulty, and the in-game controls.
+
+   If turning clockwise moves left, swap pin_a and pin_b in the overlay and
+   reboot. If the highlight moves every other detent or skips past choices,
+   tune steps-per-period (1, 2, or 4) until each detent gives one key tap.
+   Check service errors with `journalctl -u checkmate-rotary.service -b`.
 
 
 4. RUN

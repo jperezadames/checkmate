@@ -99,7 +99,7 @@ This prints every `info`, `state` and `toast` message as the UI receives them. T
 
 ### The UI
 
-With the backend running, start the UI's dev server and open http://127.0.0.1:5173. It connects to `ws://127.0.0.1:8000/ws` and shows the live game. With the fake camera, make the moves by clicking the screen's board (a piece, then its square; the computer's move too), or with the **Start position** / **Play the computer's move** buttons above it. The keyboard's ← → Enter Esc are the console's 4 buttons:
+With the backend running, start the UI's dev server and open http://127.0.0.1:5173. It connects to `ws://127.0.0.1:8000/ws` and shows the live game. With the fake camera, make the moves by clicking the screen's board (a piece, then its square; the computer's move too), or with the **Start position** / **Play the computer's move** buttons above it. The UI uses a rotary encoder plus Select: turn to move the highlight and press Select to activate. On a laptop, use ← → and Enter. Setup walks through color, difficulty, then the game. Select on-screen Back/Close controls to return:
 
 ```bash
 cd ui && npm install && npm run dev
@@ -110,7 +110,7 @@ Or build it once (`cd ui && npm run build`) and restart the backend: it then ser
 ## On the Raspberry Pi
 
 Once:
-1. Follow [`pi-setup.txt`](pi-setup.txt): Stockfish, the venv, the buttons.
+1. Follow [`pi-setup.txt`](pi-setup.txt) to install Stockfish, set up the venv, and configure the rotary encoder and Select button.
 2. Upload the LED firmware ([`pico/README.md`](pico/README.md)) and plug the Pico into the Pi.
 3. Build the UI on a laptop (`cd ui && npm run build`) and copy `ui/dist/` to the Pi. Node.js isn't needed on the Pi.
 4. Print the calibration markers (`.venv/bin/python scripts/camera/make_aruco_markers.py`) and place them just outside the corners: id 0 at a1, 1 at h1, 2 at h8, 3 at a8. Or set `camera.manual_corners` in `config.json` instead.

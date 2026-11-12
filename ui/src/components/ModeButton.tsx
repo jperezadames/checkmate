@@ -6,12 +6,13 @@ type ModeButtonProps = {
   icon: LucideIcon;
   tone?: 'green' | 'gold';
   disabled?: boolean;
+  initialFocus?: boolean;
   onClick?: () => void;
 };
 
-export default function ModeButton({ title, description, icon: Icon, tone = 'green', disabled = false, onClick }: ModeButtonProps) {
+export default function ModeButton({ title, description, icon: Icon, tone = 'green', disabled = false, initialFocus = false, onClick }: ModeButtonProps) {
   return (
-    <button type="button" className={`mode-button mode-button--${tone}`} disabled={disabled} onClick={onClick}>
+    <button type="button" className={`mode-button mode-button--${tone}`} disabled={disabled} data-nav-initial={initialFocus ? '' : undefined} onClick={onClick}>
       <span className="mode-icon"><Icon size={25} strokeWidth={1.7} aria-hidden="true" /></span>
       <span className="mode-copy"><span className="mode-title">{title}</span><span className="mode-description">{description}</span></span>
       {disabled ? <span className="mode-badge">Coming later</span> : <ChevronRight className="mode-arrow" size={22} aria-hidden="true" />}

@@ -51,12 +51,12 @@ The physical system will be housed in a 3D-printed enclosure that hides the wiri
 |---------|-------------|----------|
 | Raspberry Pi Pico | Embedded controller for the physical system | 1 |
 | 16×16 LED Matrix (WS2812) | Provides visual guidance for source and destination squares; 2×2 LEDs under each square | 1 |
-| Screen (~7", touch not used) + 4 buttons | User interface for game setup, practice modes, and move feedback; the buttons are wired to the Pi's GPIO | 1 + 4 |
+| Screen (~7") + rotary encoder + Select switch | Game setup, practice modes, and move feedback. The encoder and switch connect to the Pi's GPIO. | 1 each |
 | USB webcam | Monitors the physical chessboard from above for board-state and move detection; its microphone is the voice input | 1 |
 | 3D-Printed Container / Enclosure | Houses the board electronics and hides wiring while keeping components accessible | 1 |
 | 3D-Printed Camera Stand | Holds the camera steadily above all 64 squares | 1 |
 
-- **Schematic / physical arrangement:** The camera will be fixed above the chessboard. The 16×16 LED matrix will be synchronized with the board to indicate moves. The screen and its 4 buttons will stand beside the board for game controls and training feedback. Wiring and electronics will be contained beneath the board in the 3D-printed enclosure.
+- **Schematic / physical arrangement:** The camera will be fixed above the chessboard. The 16×16 LED matrix will be synchronized with the board to indicate moves. The screen, rotary encoder, and Select switch will stand beside the board for game controls and training feedback. Wiring and electronics will be contained beneath the board in the 3D-printed enclosure.
 
 ### 4.3 Software Components
 - **Libraries / Frameworks:**
@@ -170,7 +170,7 @@ uv pip install -r requirements-dev.txt
 
 ### Raspberry Pi
 
-The USB webcam needs nothing extra (`"backend": "v4l2"` in `config.json`). Only the Raspberry Pi camera module (`"backend": "picamera2"`) needs Picamera2, which must come from apt (`sudo apt install python3-picamera2`); the venv is created with `--system-site-packages` so it stays visible (`numpy<2` in `requirements.txt` keeps it compatible). See also [`pi-setup.txt`](pi-setup.txt), including the button setup.
+The USB webcam needs nothing extra (`"backend": "v4l2"` in `config.json`). Only the Raspberry Pi camera module (`"backend": "picamera2"`) needs Picamera2, which must come from apt (`sudo apt install python3-picamera2`); the venv is created with `--system-site-packages` so it stays visible (`numpy<2` in `requirements.txt` keeps it compatible). See [`pi-setup.txt`](pi-setup.txt) for the rotary encoder and Select wiring and setup.
 
 ```bash
 sudo apt install stockfish

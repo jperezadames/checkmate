@@ -567,7 +567,7 @@ Use `test` to check the mapping: if a1, h1, h8, a8 light up in the right corners
 
 The UI **shows state and sends commands**. It never decides anything about the game itself: no legal-move checking, no clock, no game state of its own.
 
-**Input is 4 buttons, no touch and no mouse.** The buttons arrive as the keys ← → Enter Esc (`gpio-key` on the Pi, see `pi-setup.txt`), so every screen must be usable with those 4 keys alone: ← → move the focus (and change a focused slider), Enter activates, Esc goes back or cancels. A USB keyboard works the same way for testing.
+**Input is a rotary encoder and one Select switch.** The Pi sends `ArrowLeft` or `ArrowRight` for each turn by one detent and `Enter` for Select. Every screen must be usable with those three key events. Turn to move focus and press Select to activate the focused control, including on-screen Back and Close actions. A USB keyboard works the same way for testing. See [the Pi setup](../pi-setup.txt).
 
 ### 5.1 Backend: FastAPI server (`checkmate/server/`)
 

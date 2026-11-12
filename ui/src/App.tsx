@@ -9,13 +9,12 @@ import GameSetup from './screens/GameSetup';
 import GameScreen from './screens/GameScreen';
 import PreviewApp from './PreviewApp';
 import { backendUrl, useBackend } from './backend';
-import { useKeyNavigation } from './keys';
+import DirectionalNavigation from './components/DirectionalNavigation';
 
 const MOCK = new URLSearchParams(window.location.search).has('mock');
 const START_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
 
 export default function App() {
-  useKeyNavigation();
   return MOCK ? <PreviewApp /> : <LiveApp />;
 }
 
@@ -41,12 +40,13 @@ function LiveApp() {
     setScreen(next);
   }
 
-  return <>
+  return (
     <TouchscreenPreview
       screenName={game ? 'Play vs Bot' : screen === 'menu' ? 'Main menu' : 'Play vs Bot setup'}
       caption={connected ? `Live · ${backendUrl()}` : `Connecting to ${backendUrl()}…`}
       controls={fakeControls}
     >
+      <DirectionalNavigation focusKey={`${game ? "game" : screen}:${game?.phase ?? "idle"}`}>
       {game && <GameScreen
         state={game}
         connected={connected}
@@ -71,7 +71,8 @@ function LiveApp() {
         onStart={config => send({ type: 'start_game', human_color: config.humanColor, elo: config.elo, mode: 'play' })}
       />}
       <Toasts toasts={toasts} />
+      {trainingDialog && <TrainingDialog onClose={() => setTrainingDialog(false)} />}
+      </DirectionalNavigation>
     </TouchscreenPreview>
-    {trainingDialog && <TrainingDialog onClose={() => setTrainingDialog(false)} />}
-  </>;
+  );
 }

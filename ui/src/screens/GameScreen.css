@@ -3,8 +3,6 @@
 .game-heading, .game-header-actions { display: flex; align-items: center; gap: 12px; }
 .game-wordmark { font-size: 21px; font-weight: 650; letter-spacing: -.7px; }
 .game-mode-name { font-size: 12px; color: var(--secondary); }
-.icon-button { min-height: 44px; min-width: 44px; border: 1px solid var(--line); border-radius: 10px; display: inline-flex; align-items: center; justify-content: center; padding: 8px; background: var(--surface); }
-.icon-button:hover { background: var(--surface-hover); }
 .sample-label { color: var(--gold); font-size: 10px; letter-spacing: 1px; white-space: nowrap; }
 .game-grid { display: grid; grid-template-columns: minmax(0, 382px) minmax(0, 1fr); gap: 24px; flex: 1; min-height: 0; }
 .board-column { min-width: 0; display: flex; flex-direction: column; }
@@ -68,6 +66,8 @@
 .history-heading > span { color: var(--subtle); font-size: 11px; }
 .move-scroll { overflow-y: auto; min-height: 0; max-height: 126px; scrollbar-width: thin; border-radius: 6px; }
 .move-scroll:focus-visible { outline: 2px solid var(--gold); outline-offset: -2px; }
+[data-nav-scope] .move-scroll:focus { outline-offset: -3px; }
+.browsing-moves { background: #2a352a; }
 .move-history table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 13px; }
 .move-history th { width: 36px; font-weight: 400; color: var(--subtle); text-align: left; }
 .move-history th, .move-history td { padding: 6px 10px; }
@@ -87,9 +87,12 @@
 .danger-action { color: #f6aa91; }
 .game-dialog { width: 420px; max-width: calc(100vw - 32px); max-height: calc(100dvh - 32px); overflow: auto; padding: 24px; background: var(--screen); color: var(--text); border: 1px solid var(--line); border-radius: 18px; box-shadow: 0 20px 80px #0007; }
 .game-dialog::backdrop { background: #07100cbb; }
-.game-dialog h2 { margin: 0 40px 12px 0; font-size: 23px; font-weight: 500; }
+.game-dialog h2 { min-height: 32px; margin: 0 48px 12px 0; font-size: 23px; font-weight: 500; }
 .game-dialog p { color: var(--secondary); font-size: 14px; line-height: 1.6; margin: 10px 0 20px; }
 .dialog-close { position: absolute; right: 12px; top: 12px; }
+.game-dialog .display-flip-button { position: absolute; right: 12px; top: 12px; }
+.game-dialog:has(.dialog-close) .display-flip-button { right: 64px; }
+.game-dialog:has(.dialog-close) h2 { margin-right: 96px; }
 .game-dialog .settings-summary { font-size: 12px; margin-bottom: 14px; }
 .setting-toggle { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 48px; font-size: 14px; }
 .setting-toggle input { width: 20px; height: 20px; accent-color: var(--green); }
@@ -136,3 +139,20 @@
   .preview-controls { flex-wrap: wrap; }
 }
 @media (prefers-reduced-motion: reduce) { .thinking-spinner { animation: none; } }
+
+/* One setup choice per screen, in the same order as rotary navigation. */
+.setup-step { color: var(--subtle); font-size: 11px; letter-spacing: 1.4px; }
+.setup-wizard { gap: 18px; }
+.setup-wizard .setup-title { margin: 8px 0; }
+.setup-wizard .color-options button { min-height: 150px; flex-direction: column; gap: 10px; }
+.setup-wizard .color-options button > span { font-size: 45px; line-height: 1; }
+.setup-wizard .color-options small { color: var(--secondary); font-size: 11px; }
+.setup-wizard .difficulty-options button { min-height: 150px; gap: 12px; }
+.setup-wizard .difficulty-options strong { font-size: 26px; font-weight: 500; }
+.setup-notice { color: var(--secondary); font-size: 12px; line-height: 1.5; }
+.setup-wizard footer { gap: 12px; }
+.setup-wizard .setup-actions { flex-wrap: wrap; justify-content: flex-end; }
+@media (max-width: 700px) {
+  .setup-wizard .color-options button, .setup-wizard .difficulty-options button { min-height: 110px; }
+  .setup-wizard .setup-actions { justify-content: flex-start; }
+}

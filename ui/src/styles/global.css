@@ -7,6 +7,7 @@ button:focus-visible, input:focus-visible { outline: 3px solid var(--gold); outl
 button, a { -webkit-user-select: none; user-select: none; }
 .screen-shell { width: 100%; height: 100%; min-height: 480px; padding: 28px 36px 20px; background: var(--screen); display: flex; flex-direction: column; }
 .screen-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.screen-header-actions { display: flex; align-items: center; gap: 12px; }
 .brand { display: flex; align-items: center; gap: 12px; }
 .brand-mark { width: 38px; height: 38px; }
 .brand-name { font-size: 28px; font-weight: 650; letter-spacing: -1.2px; }
@@ -20,6 +21,8 @@ button, a { -webkit-user-select: none; user-select: none; }
 .button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 48px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface); padding: 10px 18px; font-size: 14px; }
 .button:enabled:hover { background: var(--surface-hover); }
 .button:enabled:active { transform: translateY(1px); }
+.icon-button { min-height: 44px; min-width: 44px; border: 1px solid var(--line); border-radius: 10px; display: inline-flex; align-items: center; justify-content: center; padding: 8px; background: var(--surface); }
+.icon-button:hover { background: var(--surface-hover); }
 .preview-workspace { min-height: 100dvh; padding: 36px 24px; display: flex; flex-direction: column; justify-content: center; align-items: center; }
 .preview-toolbar { width: min(100%, 800px); display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-bottom: 18px; }
 .preview-title { margin: 0 0 4px; font-size: 14px; font-weight: 600; }
@@ -27,11 +30,19 @@ button, a { -webkit-user-select: none; user-select: none; }
 .preview-size { font-size: 11px; letter-spacing: 1px; color: var(--subtle); margin-left: 12px; }
 .preview-frame { position: relative; width: 800px; height: 480px; flex-shrink: 0; border-radius: 20px; overflow: hidden; box-shadow: 0 0 0 1px var(--line), 0 24px 80px #0005; }
 .preview-caption { color: var(--subtle); font-size: 12px; text-align: center; margin: 20px 0 0; }
-.app-viewport { position: relative; height: 100dvh; }
+.app-viewport { position: relative; height: max(480px, 100dvh); }
+[data-display-flipped] .directional-navigation, [data-display-flipped] .game-dialog { transform: rotate(180deg); }
+.display-flip-button[aria-pressed=true] { border-color: var(--green); color: var(--green); }
 .toasts { position: absolute; top: 14px; left: 50%; transform: translateX(-50%); z-index: 10; width: max-content; max-width: calc(100% - 32px); display: flex; flex-direction: column; gap: 6px; pointer-events: none; }
 .toast { padding: 9px 16px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface); font-size: 13px; box-shadow: 0 8px 30px #0006; }
 .toast-warning { border-color: var(--gold); color: var(--gold); }
 .toast-error { border-color: #f6aa91; color: #f6aa91; }
+.directional-navigation { width: 100%; height: 100%; }
+[data-nav-scope] :is(button, input, [tabindex]):focus { outline: 3px solid var(--gold); outline-offset: 3px; }
+[data-nav-scope] .setting-toggle:has(input:focus) { outline: 3px solid var(--gold); outline-offset: 1px; border-radius: 6px; }
+[data-nav-scope] .setting-toggle input:focus { outline-offset: 2px; }
+.navigation-hint { display: inline-flex; align-items: center; gap: 7px; color: var(--secondary); font-size: 11px; white-space: nowrap; }
+.navigation-hint kbd { font: inherit; font-weight: 600; color: var(--text); }
 .mode-dialog { max-width: min(440px, calc(100vw - 40px)); padding: 30px; border: 1px solid var(--line); border-radius: 20px; background: var(--screen); color: var(--text); box-shadow: 0 20px 80px #0007; }
 .mode-dialog::backdrop { background: #07100cbb; }
 .mode-dialog h2 { margin: 10px 0; font-size: 28px; }
@@ -42,6 +53,10 @@ button, a { -webkit-user-select: none; user-select: none; }
   .preview-workspace { padding: 20px 16px; }
   .preview-frame { width: 100%; max-width: 800px; height: auto; min-height: 480px; }
   .preview-size { display: none; }
+}
+@media (max-width: 700px) {
+  .app-viewport { height: auto; min-height: 100dvh; }
+  .app-viewport .directional-navigation { height: auto; min-height: 100dvh; }
 }
 @media (max-width: 520px) {
   .screen-shell { padding: 24px 20px; }

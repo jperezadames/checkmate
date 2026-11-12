@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import DirectionalNavigation from './components/DirectionalNavigation';
 import ScreenShell from './components/ScreenShell';
 import TouchscreenPreview from './components/TouchscreenPreview';
 import TrainingDialog from './components/TrainingDialog';
@@ -42,8 +43,9 @@ export default function PreviewApp() {
     </div>
   ) : undefined;
 
-  return <>
+  return (
     <TouchscreenPreview screenName={screen === 'menu' ? 'Main menu' : screen === 'setup' ? 'Play vs Bot setup' : 'Play vs Bot'} controls={controls}>
+      <DirectionalNavigation focusKey={`${screen}:${screen === 'game' ? state.phase : ''}`}>
       {screen === 'menu' && <ScreenShell><MainMenu onSelectMode={mode => mode === 'play' ? setScreen('setup') : setTrainingDialog(true)} /></ScreenShell>}
       {screen === 'setup' && <GameSetup onBack={() => setScreen('menu')} onStart={startPreview} />}
       {screen === 'game' && <GameScreen
@@ -61,7 +63,8 @@ export default function PreviewApp() {
           setScenario('game_over');
         }}
       />}
+      {trainingDialog && <TrainingDialog onClose={() => setTrainingDialog(false)} />}
+      </DirectionalNavigation>
     </TouchscreenPreview>
-    {trainingDialog && <TrainingDialog onClose={() => setTrainingDialog(false)} />}
-  </>;
+  );
 }
