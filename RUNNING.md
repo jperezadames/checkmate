@@ -1,7 +1,7 @@
 # Running CheckMate
 
 How to start the system, on a laptop without the hardware or on the Raspberry Pi, and how to play and check it from a terminal.
-Installing: [README](README.md#development-setup). Setting up the Pi: [`pi-setup.txt`](pi-setup.txt). The Pico firmware: [`pico/README.md`](pico/README.md). The API: [`contracts/interfaces.md`](contracts/interfaces.md) section 5.
+Installing: [README](README.md#development-setup). Setting up the Pi: [`pi-setup.txt`](pi-setup.txt). The API: [`contracts/interfaces.md`](contracts/interfaces.md) section 5.
 
 ## What runs
 
@@ -13,7 +13,7 @@ One process, started from the repository root:
 
 It runs:
 - the FastAPI server: HTTP and the WebSocket `/ws` on http://127.0.0.1:8000 (contract section 5.1);
-- the game loop in a background thread. It opens the camera, Stockfish and the LED Pico, and closes them on Ctrl+C;
+- the game loop in a background thread. It opens the camera, Stockfish and the LED matrix (over SPI), and closes them on Ctrl+C;
 - the UI's built files from `ui/dist/` at `/`, if that folder exists. Otherwise `/` is a 404 and the API still works.
 
 ## Real or fake modules
@@ -111,7 +111,7 @@ Or build it once (`cd ui && npm run build`) and restart the backend: it then ser
 
 Once:
 1. Follow [`pi-setup.txt`](pi-setup.txt) to install Stockfish, set up the venv, and configure the rotary encoder and Select button.
-2. Upload the LED firmware ([`pico/README.md`](pico/README.md)) and plug the Pico into the Pi.
+2. Wire the WS2812 matrix's data line to SPI MOSI (GPIO10, pin 19) through a level shifter, enable SPI (`dtparam=spi=on`), and power the strip from an external 5 V supply (see [`pi-setup.txt`](pi-setup.txt)).
 3. Build the UI on a laptop (`cd ui && npm run build`) and copy `ui/dist/` to the Pi. Node.js isn't needed on the Pi.
 4. Print the calibration markers (`.venv/bin/python scripts/camera/make_aruco_markers.py`) and place them just outside the corners: id 0 at a1, 1 at h1, 2 at h8, 3 at a8. Or set `camera.manual_corners` in `config.json` instead.
 
@@ -145,7 +145,7 @@ To aim the camera before starting the server, use `.venv/bin/python scripts/came
 | phase `error`, "Engine problem: could not start Stockfish at ..." | Stockfish isn't installed, or is at another path | install it; on a laptop use `CHECKMATE_CONFIG` (above); then Retry |
 | phase `error`, "Camera problem: ..." | camera unplugged, or no frames for a few seconds | check the cable, then Retry; Calibrate if it moved |
 | start screen: "The camera isn't calibrated" | no `calibration.json` yet | calibrate (above) |
-| `devices.led` is `"error"`, the game goes on | the Pico isn't plugged in, or its firmware isn't running | plug it in. It reconnects by itself within about 2 s; until then the UI shows the computer's moves |
+| `devices.led` is `"error"`, the game goes on | SPI isn't enabled, no permission for `/dev/spidev0.0`, or the matrix isn't wired/powered | enable SPI (`dtparam=spi=on`), check wiring/power. It reconnects by itself within about 2 s; until then the UI shows the computer's moves |
 | the setup check never ends | the board isn't in the starting position (`board_problem.squares` says where); with the fake camera, the last game's position | fix those squares; with the fake camera, send the start FEN to `/api/fake/board` |
 | `/` returns 404 | no `ui/dist/` | build the UI, or use the API directly |
 | `address already in use` | another server is on port 8000 | stop it, or use `--port` |

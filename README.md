@@ -49,8 +49,8 @@ The physical system will be housed in a 3D-printed enclosure that hides the wiri
 ### 4.2 Hardware Components
 | Component | Description | Quantity |
 |---------|-------------|----------|
-| Raspberry Pi Pico | Embedded controller for the physical system | 1 |
-| 16×16 LED Matrix (WS2812) | Provides visual guidance for source and destination squares; 2×2 LEDs under each square | 1 |
+| Raspberry Pi 5 + Grove Base Hat | Runs everything; all I/O (camera, rotary, button, LED, screen) wires directly to the Pi | 1 |
+| 16×16 LED Matrix (WS2812) | Visual guidance for source and destination squares; 2×2 LEDs under each square. Driven directly by the Pi over SPI (MOSI, GPIO10) | 1 |
 | Screen (~7") + rotary encoder + Select switch | Game setup, practice modes, and move feedback. The encoder and switch connect to the Pi's GPIO. | 1 each |
 | USB webcam | Monitors the physical chessboard from above for board-state and move detection; its microphone is the voice input | 1 |
 | 3D-Printed Container / Enclosure | Houses the board electronics and hides wiring while keeping components accessible | 1 |
@@ -63,7 +63,7 @@ The physical system will be housed in a 3D-printed enclosure that hides the wiri
   - Stockfish chess engine/API for move generation, legal moves, game management, analysis, and adjustable difficulty.
   - Camera/board-processing software for converting the camera view into an 8×8 board representation and detecting changes between positions.
   - Trainer software for move explanations, advice, questions, and conversational feedback.
-- **Communication Protocols:** Defined in [`contracts/interfaces.md`](contracts/interfaces.md): USB serial with JSON lines between the Pi and the Pico, HTTP + WebSocket between the backend and the UI, and plain function calls between the Python modules.
+- **Communication Protocols:** Defined in [`contracts/interfaces.md`](contracts/interfaces.md): SPI from the Pi to the WS2812 LED matrix, HTTP + WebSocket between the backend and the UI, and plain function calls between the Python modules.
 - **Software Structure:**
   - Camera input and board-processing module
   - Move detection and validation module
@@ -216,11 +216,10 @@ checkmate/
 │   ├── camera.py        Camera (background thread, observations, restart)
 │   └── fake.py          FakeCamera
 ├── engine/              Joel: GameEngine, FakeGameEngine
-├── led/                 Hsin-Chen: LedController, FakeLedController
+├── led/                 Hsin-Chen: LedController (WS2812 over SPI), driver.py, matrix.py, FakeLedController
 ├── server/              FastAPI app (app.py), /api routes (api.py), /ws (ws.py),
 │                        hub.py between the routes and the loop thread, /api/fake/* (fake.py)
 └── game/                game loop (loop.py), command rules (commands.py)
-pico/main.py             Hsin-Chen: Pico LED firmware
 ui/                      Jayden: frontend, built into ui/dist/
 scripts/<module>/        manual tools, e.g. scripts/camera/preview.py (press c to calibrate, q to quit)
                          and scripts/camera/make_aruco_markers.py (id 0 → a1, 1 → h1, 2 → h8, 3 → a8 corner)

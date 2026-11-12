@@ -15,9 +15,15 @@
     "think_time_s": 1.0
   },
   "led": {
-    "port": "/dev/serial/by-id/usb-MicroPython_Board_in_FS_mode_*-if00",
-    "reply_timeout_s": 0.5,
-    "brightness": 40
+    "spi_bus": 0,
+    "spi_device": 0,
+    "spi_hz": 2400000,
+    "brightness": 40,
+    "max_brightness": 50,
+    "size": 16,
+    "serpentine": true,
+    "rotation": 0,
+    "mirror": false
   },
   "server": {
     "host": "127.0.0.1",

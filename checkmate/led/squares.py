@@ -1,7 +1,7 @@
 """What main may ask the LED board to show (contracts/interfaces.md sections 4.1, 4.2).
 
-A pattern is a list of {"sq": square, "role": role}. The Pico firmware owns the colors and
-effects; the Pi only checks the names before sending them.
+A pattern is a list of {"sq": square, "role": role}. matrix.py owns the colours and effects;
+this module only checks the names before the controller renders them.
 """
 
 FILES = "abcdefgh"

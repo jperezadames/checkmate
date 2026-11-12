@@ -30,11 +30,41 @@ Target: Raspberry Pi 5, Raspberry Pi OS (Bookworm or Trixie).
      python-chess   engine: board state + Stockfish interface
      numpy (<2)     camera math (pinned for Picamera2 compatibility)
      opencv-python  camera vision / ArUco detection
-     pyserial       LED controller: USB serial link to the Pico
+     spidev         LED matrix: WS2812 driven over SPI (Linux only)
      fastapi        backend server
      uvicorn        runs the server
 
-3. ROTARY ENCODER AND SELECT
+3. LED MATRIX (WS2812, over SPI)
+   The 16x16 WS2812 matrix is driven directly by the Pi over SPI -- there is
+   no Pico. The Pi 5 cannot use the old PWM NeoPixel libraries, so the data
+   line goes on the SPI MOSI pin.
+
+     Matrix DIN  -> SPI MOSI = GPIO10 (physical pin 19), through a
+                    3.3 V -> 5 V level shifter
+     Matrix 5V   -> external 5 V supply (>= 5 V 4 A), NOT the Pi's 5 V
+     Matrix GND  -> supply ground AND Pi GND (shared ground)
+
+   Enable SPI: in /boot/firmware/config.txt add (in the [all] section)
+
+     dtparam=spi=on
+
+   then reboot. The device appears as /dev/spidev0.0 (spi_bus 0, spi_device 0
+   in config.json). Make sure the user running the server is in the "spi"
+   group (sudo usermod -aG spi $USER, then log out and back in).
+
+   Check orientation from the repo root once the server isn't running:
+
+     .venv/bin/python -c "from checkmate.led import LedController; \
+       c=LedController({}); print(c.start()); c.self_test(); import time; time.sleep(3); c.close()"
+
+   a1, h1, h8, a8 should light one by one. If the corners or colors are wrong,
+   tune size / serpentine / rotation / mirror in config.json "led".
+
+   The Grove Base Hat provides the ADC and Grove connectors for the rotary,
+   button and camera I/O, but it does NOT drive WS2812 -- the matrix data line
+   still goes to SPI MOSI as above.
+
+4. ROTARY ENCODER AND SELECT
    Connect a mechanical quadrature encoder and one momentary switch to the
    Pi's GPIO with the Pi powered off. Use the encoder's push switch or a
    separate Select button.
@@ -80,7 +110,7 @@ Target: Raspberry Pi 5, Raspberry Pi OS (Bookworm or Trixie).
    Check service errors with `journalctl -u checkmate-rotary.service -b`.
 
 
-4. RUN
+5. RUN
 
      .venv/bin/uvicorn checkmate.server:app --host 127.0.0.1 --port 8000
 
@@ -91,5 +121,5 @@ Target: Raspberry Pi 5, Raspberry Pi OS (Bookworm or Trixie).
 NOTES
    - requirements-dev.txt = requirements.txt + pytest + httpx (tests only).
      Needed only to run the test suite; not required to run the system.
-   - The Pico LED firmware is uploaded to the Pico separately with mpremote;
-     it is not installed on the Pi.
+   - All I/O (camera, rotary, button, LED matrix, screen) is wired directly to
+     the Pi 5; there is no Pico or external microcontroller.
