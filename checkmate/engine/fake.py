@@ -55,6 +55,7 @@ class FakeGameEngine(BaseChessGame):
             "best_san": self._moves_san[-1],
             "score_before": 0,
             "score_after": 0,
+            "mate_before": None,
             "mate_in": None,
             "cp_loss": 0,
             "rating": "good",

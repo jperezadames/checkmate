@@ -151,7 +151,8 @@ class GameEngine(BaseChessGame):
             "best_san": best_san,
             "score_before": None if score_before.is_mate() else score_before.score(),
             "score_after": score_after_field,
-            "mate_in": mate_in,
+            "mate_before": score_before.mate(),  # signed, +White mates; None if no mate before
+            "mate_in": mate_in,                  # signed, +White mates; None if no mate after
             "cp_loss": cp_loss,
             "rating": _rating_for(cp_loss),
         }
