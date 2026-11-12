@@ -119,8 +119,25 @@ def test_fools_mate_is_detected_and_rated(started):
     assert rating["rating"] == "best"
     assert rating["mate_in"] == 0
     assert rating["score_after"] is None
+    # Black (the mover) had a forced mate before playing it: White's POV -> -1.
+    assert rating["mate_before"] == -1
     # No further moves once mated.
     assert eng.push_move("e1e2")["error"] == "GAME_OVER"
+
+
+def test_move_allowing_mate_reports_mate_not_huge_cp(started):
+    """A move that hands the opponent a forced mate must surface mate fields, not leak the
+    internal ~100000 cp as a user-facing evaluation. (Scholar's mate: 3...Nf6?? -> 4.Qxf7#.)"""
+    eng, _ = started
+    eng.new_game("white", 1500)
+    for mv in ["e2e4", "e7e5", "f1c4", "b8c6", "d1h5", "g8f6"]:
+        assert eng.push_move(mv)["ok"] is True
+    r = eng.rate_last_move()
+    assert r["ok"] is True
+    assert r["mate_in"] == 1           # White (opponent of the mover) mates in 1
+    assert r["score_after"] is None    # a mate has no centipawn score
+    assert r["mate_before"] is None    # no forced mate existed before the blunder
+    assert r["rating"] == "blunder"    # classification still correct via the internal cp_loss
 
 
 def test_get_engine_move_after_game_over(started):

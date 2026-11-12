@@ -406,6 +406,7 @@ Rates the last confirmed move played, by either the human or the bot, in both `p
   "best_san": "Nf3",
   "score_before": 30,
   "score_after": -45,
+  "mate_before": null,
   "mate_in": null,
   "cp_loss": 75,
   "rating": "inaccuracy"
@@ -414,6 +415,7 @@ Rates the last confirmed move played, by either the human or the bot, in both `p
 | Field | Meaning |
 |---|---|
 | `score_before` / `score_after` | evaluation before and after the move (White's POV); `null` if it's a forced mate |
+| `mate_before` | signed int if there was a forced mate before the move (positive = White mates), else `null`. When this or `mate_in` is set, describe the mate from these fields and do not show `cp_loss` (a mate is scored as ±100000 cp internally, so `cp_loss` is huge). |
 | `mate_in` | signed int if there is a forced mate after the move (positive = White mates), else `null` |
 | `cp_loss` | how much worse the move was than the best move, from the mover's side, ≥ 0 |
 | `rating` | `"best"` (≤ 10), `"good"` (≤ 50), `"inaccuracy"` (≤ 100), `"mistake"` (≤ 300), `"blunder"` (> 300). Thresholds on `cp_loss`; Joel may tune them. |
