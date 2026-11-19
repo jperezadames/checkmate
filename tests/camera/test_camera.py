@@ -66,6 +66,10 @@ def test_camera_end_to_end(config):
     _FakeSource.frame = render(occupancy_from_fen(AFTER_E4))
     obs = _stable_obs(cam, occupancy_from_fen(AFTER_E4))
     assert obs["seq"] > 1
+
+    # The room gets darker: the same position, corrected by the markers' black and white.
+    _FakeSource.frame = render(occupancy_from_fen(AFTER_E4), light=0.6)
+    _stable_obs(cam, occupancy_from_fen(AFTER_E4))
     assert isinstance(cam.get_debug_image(), bytes)
     cam.close()
     cam.close()

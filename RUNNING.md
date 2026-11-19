@@ -145,6 +145,7 @@ To aim the camera before starting the server, use `.venv/bin/python scripts/came
 | phase `error`, "Engine problem: could not start Stockfish at ..." | Stockfish isn't installed, or is at another path | install it; on a laptop use `CHECKMATE_CONFIG` (above); then Retry |
 | phase `error`, "Camera problem: ..." | camera unplugged, or no frames for a few seconds | check the cable, then Retry; Calibrate if it moved |
 | start screen: "The camera isn't calibrated" | no `calibration.json` yet | calibrate (above) |
+| squares misread after calibrating: empty squares as `W` or `B` on `/api/camera.jpg` | a calibration made in another place or light (a failed calibration keeps the old one), or one small part of the board lit differently (a shadow, glare); the whole picture getting brighter or darker is corrected by the markers | keep the 4 markers in view; remove `calibration.json`, restart and calibrate again |
 | `devices.led` is `"error"`, the game goes on | SPI isn't enabled, no permission for `/dev/spidev0.0`, or the matrix isn't wired/powered | enable SPI (`dtparam=spi=on`), check wiring/power. It reconnects by itself within about 2 s; until then the UI shows the computer's moves |
 | the setup check never ends | the board isn't in the starting position (`board_problem.squares` says where); with the fake camera, the last game's position | fix those squares; with the fake camera, send the start FEN to `/api/fake/board` |
 | `/` returns 404 | no `ui/dist/` | build the UI, or use the API directly |
