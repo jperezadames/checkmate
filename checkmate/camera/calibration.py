@@ -4,7 +4,7 @@ import json
 
 from checkmate.camera.vision import CLASSES
 
-SAVED_KEYS = ("corners_px", "frame_size", "centroids")
+SAVED_KEYS = ("corners_px", "frame_size", "centroids", "markers_px", "levels")
 
 
 def save_calibration(path, calib) -> dict:
@@ -31,11 +31,15 @@ def load_calibration(path):
 
 def _check(calib):
     """Raise ValueError unless `calib` has the shape save_calibration() writes."""
-    corners, size, centroids = (calib[k] for k in SAVED_KEYS)
+    corners, size, centroids, markers, levels = (calib[k] for k in SAVED_KEYS)
     ok = (
         len(corners) == 4 and all(len(p) == 2 for p in corners)
         and len(size) == 2
         and all(len(centroids[shade][cls]) == 2 for shade in ("dark", "light") for cls in CLASSES)
+        # markers and their levels: both, or neither (manual corners)
+        and (markers is None) == (levels is None)
+        and (markers is None or len(markers) == 4 and all(len(m) == 4 and all(len(p) == 2 for p in m) for m in markers))
+        and (levels is None or len(levels) == 2)
     )
     if not ok:
         raise ValueError("calibration file has the wrong shape")

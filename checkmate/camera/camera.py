@@ -6,7 +6,7 @@ import time
 import cv2
 
 from checkmate.camera import sources
-from checkmate.camera.aruco import find_aruco_corners
+from checkmate.camera.aruco import board_corners, find_aruco_markers
 from checkmate.camera.calibration import load_calibration, save_calibration
 from checkmate.camera.motion import MotionDetector
 from checkmate.camera.vision import analyze_frame, calibrate_from_frame, draw_debug
@@ -101,13 +101,14 @@ class Camera:
                 return err("CAMERA_NOT_READY", "no frame from the camera")
 
             if self.manual_corners is not None:
-                corners = self.manual_corners
+                corners, markers = self.manual_corners, None
             else:
-                corners = find_aruco_corners(frame)
-                if corners is None:
+                markers = find_aruco_markers(frame)
+                if markers is None:
                     return err("CALIBRATION_FAILED", "could not find all 4 ArUco markers (ids 0-3)")
+                corners = board_corners(markers)
 
-            calib = calibrate_from_frame(frame, corners)
+            calib = calibrate_from_frame(frame, corners, markers)
             if calib is None:
                 return err("CALIBRATION_FAILED",
                            "board not recognized; put the pieces in the starting position")

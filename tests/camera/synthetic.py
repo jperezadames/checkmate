@@ -35,8 +35,12 @@ def expected_corners():
     return cv2.perspectiveTransform(pts, _canvas_to_frame_matrix()).reshape(4, 2).tolist()
 
 
-def render(occupancy, markers=True, hand=False):
-    """Camera frame of the board. `hand` adds a hand-sized blob over e2-e3 (about 1.5 squares)."""
+def render(occupancy, markers=True, hand=False, light=1.0, glare=0):
+    """Camera frame of the board. `hand` adds a hand-sized blob over e2-e3 (about 1.5 squares).
+
+    `light` scales the brightness of everything on the board (a dimmer room), `glare` adds to it
+    (a washed-out picture).
+    """
     canvas = np.full((CANVAS, CANVAS, 3), 255, np.uint8)
     for i in range(64):
         file, rank = i % 8, i // 8
@@ -63,6 +67,7 @@ def render(occupancy, markers=True, hand=False):
             img = marker_image(marker_id, MARKER)
             canvas[y:y + MARKER, x:x + MARKER] = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
 
+    canvas = np.clip(canvas.astype(np.float32) * light + glare, 0, 255).astype(np.uint8)
     return cv2.warpPerspective(canvas, _canvas_to_frame_matrix(), (FRAME_W, FRAME_H),
                                borderValue=(90, 90, 90))
 

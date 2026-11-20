@@ -292,6 +292,7 @@ Main uses it in two places:
 - In Picamera2, format `"RGB888"` gives pixels in **B, G, R** order, which is what OpenCV expects. The default preview format `XBGR8888` has 4 channels.
 - `apt install python3-opencv` on Bookworm gives OpenCV 4.6 (old ArUco API, `cv2.aruco.detectMarkers`). `cv2.aruco.ArucoDetector` needs ≥ 4.7 (pip `opencv-python` in a venv created with `--system-site-packages`, so Picamera2 stays visible).
 - Lock exposure and white balance after warm-up (`AeEnable`/`AwbEnable` = False), so the classification doesn't drift when lighting changes.
+- Every frame, the squares' brightness is matched to the calibration frame through the black and white of the 4 ArUco markers (their places and levels are saved with the calibration), so the whole picture getting brighter or darker (room light, a screen's brightness) doesn't change the classes. A change in one place only (a shadow, an LED lighting a square) isn't corrected, and neither is anything with `manual_corners` (no markers). Calibration files from before this are ignored (`"calibrated": false`), so calibrate again.
 
 ---
 

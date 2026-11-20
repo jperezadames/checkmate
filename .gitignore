@@ -14,5 +14,6 @@ config.local.json
 # Frontend
 ui/node_modules/
 
-# Generated ArUco markers
+# Generated ArUco markers and test boards (scripts/camera/)
 markers/
+test_board/

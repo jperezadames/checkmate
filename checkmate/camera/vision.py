@@ -7,6 +7,7 @@ import chess
 import cv2
 import numpy as np
 
+from checkmate.camera.aruco import MIN_CONTRAST, marker_levels
 from checkmate.camera.occupancy import START_FEN, occupancy_from_fen
 
 # Top-down board image: WARP_SIZE x WARP_SIZE pixels, a8 at top-left, h1 at bottom-right.
@@ -85,6 +86,28 @@ def classify(feats, centroids):
     return "".join(chars), low_confidence
 
 
+def match_lighting(feats, frame, calib):
+    """Square features as if lit like the calibration frame.
+
+    The markers' black and white in `frame` are mapped onto their lightness at calibration, and
+    every square with them (a straight line through both), so the whole picture getting brighter
+    or darker (room light, a screen's brightness) doesn't change the classes. A change in one
+    place only (a shadow, a lit LED) isn't corrected. Unchanged when the calibration has no
+    markers (manual corners) or no marker is clear in `frame`.
+    """
+    if calib["levels"] is None:
+        return feats
+    now = marker_levels(frame, calib["markers_px"])
+    if now is None or now[1] - now[0] < MIN_CONTRAST:
+        return feats
+    (black0, white0), (black, white) = calib["levels"], now
+    gain = (white0 - black0) / (white - black)
+    matched = feats.copy()
+    matched[:, 0] = black0 + (feats[:, 0] - black) * gain  # mean
+    matched[:, 1] = feats[:, 1] * gain                       # spread
+    return matched
+
+
 def _orientation_ok(feats):
     """Quick checks that the warped board could be the starting position the right way round.
 
@@ -114,8 +137,11 @@ def _corner_orders(corners):
             yield order[shift:] + order[:shift]
 
 
-def calibrate_from_frame(frame, corners_px):
+def calibrate_from_frame(frame, corners_px, markers_px=None):
     """Fit a calibration from one frame of the board in the starting position.
+
+    `markers_px` (from find_aruco_markers(), None with manual corners) is kept with their black
+    and white lightness now, for match_lighting() on later frames.
 
     Tries the 8 ways `corners_px` can map to a1, h1, h8, a8. Among those that pass
     _orientation_ok(), keeps the one whose squares fit their starting-position class best: a board
@@ -138,10 +164,13 @@ def calibrate_from_frame(frame, corners_px):
     _, order, feats, centroids = best
     occupancy, low_confidence = classify(feats, centroids)
     h, w = frame.shape[:2]
+    levels = marker_levels(frame, markers_px) if markers_px is not None else None
     return {
         "corners_px": [[round(x, 1), round(y, 1)] for x, y in order],
         "frame_size": [w, h],
         "centroids": centroids,
+        "markers_px": [[[round(x, 1), round(y, 1)] for x, y in m] for m in markers_px] if levels else None,
+        "levels": [round(levels[0], 1), round(levels[1], 1)] if levels else None,
         "occupancy": occupancy,
         "low_confidence": low_confidence,
     }
@@ -150,7 +179,8 @@ def calibrate_from_frame(frame, corners_px):
 def analyze_frame(frame, calib):
     """Frame + calibration -> (warped image, occupancy, low-confidence squares)."""
     warped = warp_board(frame, calib["corners_px"])
-    occupancy, low_confidence = classify(square_features(warped), calib["centroids"])
+    feats = match_lighting(square_features(warped), frame, calib)
+    occupancy, low_confidence = classify(feats, calib["centroids"])
     return warped, occupancy, low_confidence
 
 
