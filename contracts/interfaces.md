@@ -14,7 +14,7 @@ If you need to change anything here (a field name, a function, a message), tell 
 |---|---|---|---|---|
 | Camera + move detection | Harry | Raspberry Pi | Python 3 + OpenCV | `checkmate/camera/`: class `Camera`, `FakeCamera`, functions `detect_move`, `occupancy_from_fen` |
 | Engine / game state | Joel | Raspberry Pi | Python 3 + python-chess + Stockfish | `checkmate/engine/`: class `GameEngine`, `FakeGameEngine` |
-| LED | Hsin-Chen | Raspberry Pi | Python 3 + spidev | `checkmate/led/`: class `LedController`, `FakeLedController` (drives the WS2812 matrix over SPI) |
+| LED + hardware controls | Hsin-Chen / Jayden | Pi + Pico | Python 3 + pyserial / MicroPython | Shared USB link in `checkmate/led/`, firmware in `pico/main.py` |
 | UI | Jayden | Chromium (kiosk) on the screen beside the board | HTML/JS or TS (any frontend framework) | built static files in `ui/dist/`, talking to the backend over the API in section 5 |
 | Backend server + main loop | everyone | Raspberry Pi | Python 3 + **FastAPI** + uvicorn | `checkmate/server/` (FastAPI app), `checkmate/game/` (game loop) |
 
@@ -34,9 +34,11 @@ If you need to change anything here (a field name, a function, a message), tell 
             ┌───────────────┘          │          └───────────────┐
             ▼                          ▼                          ▼
    Camera (Harry)              GameEngine (Joel)          LedController (Hsin-Chen)
-   OpenCV, USB webcam          python-chess +                    │ SPI (MOSI, GPIO10)
+   OpenCV, USB webcam          python-chess +                    │ USB serial (LEDs + controls)
                                /usr/games/stockfish              ▼
-                                                           WS2812 16×16 matrix
+                                                          Pico + Grove Shield
+                                                          D16 → WS2812 matrix
+                                                          A0 ← angle, D20 ← Select
 ```
 
 Rules:
@@ -49,7 +51,7 @@ Rules:
 
 ```python
 cam = Camera(config["camera"])          # must not touch hardware yet
-cam.start()  -> {"ok": True} | error    # open camera / start Stockfish / open the SPI device
+cam.start()  -> {"ok": True} | error    # open camera / start Stockfish / open the Pico USB link
 ...
 cam.close()  -> None                    # release hardware; safe to call twice
 ```
@@ -139,7 +141,7 @@ Every function returns either its normal result (which includes `"ok": true`) or
 | `GAME_OVER` | engine | game has ended; no more moves accepted |
 | `NO_GAME` | engine | `new_game` hasn't been called |
 | `ENGINE_ERROR` | engine | Stockfish crashed, didn't start, or timed out |
-| `LED_DISCONNECTED` | led | SPI device unavailable (SPI not enabled, no permission, or a write failed) |
+| `LED_DISCONNECTED` | led | Pico USB link unavailable, wrong firmware, serial permission missing, or a timeout |
 
 ### 1.6 Config file: `config.json`
 
@@ -162,9 +164,8 @@ One file, one section per module. Each module only reads its own section.
     "think_time_s": 1.0
   },
   "led": {
-    "spi_bus": 0,
-    "spi_device": 0,
-    "spi_hz": 2400000,
+    "port": "/dev/serial/by-id/usb-MicroPython_*-if00",
+    "reply_timeout_s": 0.5,
     "brightness": 40,
     "max_brightness": 50,
     "size": 16,
@@ -443,21 +444,21 @@ Ends the game: `result` = the other side wins, `termination` = `"RESIGNATION"`. 
 
 ## 4. LED: Hsin-Chen
 
-The Pi drives the WS2812 matrix **directly over SPI** — there is no Pico. Two things to know: the `LedController` class main calls, and how the matrix is wired and the signal encoded (4.3).
+The Pico drives the WS2812 matrix on the Grove shield D16 (GP16) and samples the angle sensor on A0 (GP26/ADC0) plus Select on D20 (GP20). One USB serial connection carries LED commands and controls between the Pi and Pico. The camera, screen, Stockfish, and game loop run on the Pi.
 
 ### 4.1 Pi side: `LedController`
 
 | Method | Returns | Meaning |
 |---|---|---|
-| `start()` | `{"ok": true, "fw": "checkmate-led-pi 1.0"}` or `LED_DISCONNECTED` | opens the SPI device and briefly shows the orientation corners. If it fails, the controller keeps retrying in the background; the game works without LEDs. |
+| `start()` | `{"ok": true, "fw": "checkmate-pico 2.0"}` or `LED_DISCONNECTED` | opens the Pico USB connection and verifies the firmware. If it fails, the controller keeps retrying in the background; the game works without LEDs. |
 | `show(squares: list)` | `{"ok": true}` / error | **replaces** everything lit with this list |
 | `clear()` | `{"ok": true}` / error | all LEDs off |
 | `set_brightness(percent: int)` | `{"ok": true}` / error | 0–100 |
 | `self_test()` | `{"ok": true}` / error | lights a1, h1, h8, a8 one by one (about 2 s), to check orientation |
-| `is_connected()` | bool | the SPI device is open and the last write succeeded |
+| `is_connected()` | bool | the Pico is answering USB requests |
 | `close()` | None | |
 
-**Every method returns quickly and never raises.** If the SPI device is unavailable (SPI not enabled, no permission, or a write fails), they return `LED_DISCONNECTED` and the game continues.
+**Every method returns quickly and never raises.** If the Pico is unavailable or a request times out, they return `LED_DISCONNECTED` and the game continues.
 
 `squares` items:
 ```python
@@ -475,7 +476,7 @@ The same square must not appear twice.
 
 ### 4.2 Roles → colors
 
-`checkmate/led/matrix.py` owns this table (the Pi only sends role names, so colors can be changed in one place). On a single-color matrix every role is just "on", and `error` blinks.
+`checkmate/led/matrix.py` owns this table and is uploaded as `matrix.py` to the Pico beside `main.py`. The Pi sends role names and the Pico renders them. On a single-color matrix every role is just "on", and `error` blinks.
 
 | Role | Used for | Color (R,G,B) | Effect |
 |---|---|---|---|
@@ -496,33 +497,36 @@ What main sends for the computer's move (`m = engine.get_engine_move()`):
 | En passant | `m.from`, `m.capture_square` → `engine_from`; `m.to` → `engine_to` |
 | Promotion | same as normal; UI tells the human which piece to put down |
 
-### 4.3 Driving the WS2812 matrix over SPI
+### 4.3 Pico USB protocol and wiring
 
-**Hardware**
-- The matrix is **16×16 = 256 WS2812 LEDs** under an 8×8 board, so **each square is a 2×2 block of 4 LEDs**, all lit the same color.
-- The Raspberry Pi 5's RP1 I/O controller broke the old PWM/DMA libraries (`rpi_ws281x`), so the data line (DIN) is driven from the **SPI MOSI pin — GPIO10, physical pin 19**. Enable SPI on the Pi (`dtparam=spi=on`). Put a 3.3 V → 5 V level shifter on the data line, and power the strip from an **external 5 V supply** (≥ 5 V 4 A, ground shared with the Pi) — never the Pi's 5 V. The Grove Base Hat does **not** drive WS2812 (it's an ADC/connector hat); the data line still goes to SPI MOSI.
-- Each WS2812 bit is sent as **3 SPI bits** (1 = `110`, 0 = `100`) at `spi_hz` (default 2.4 MHz), followed by a low reset to latch the frame. A full 256-LED frame is ~2.3 KB and takes a few ms to send — fine for the 2 Hz `error` blink.
+- Seeed Grove Shield for Pi Pico uses D16/GP16 for matrix data, D20/GP20 for Grove Button, and A0/GP26/ADC0 for the Grove Rotary Angle Sensor. Set the shield to 3.3 V for Pico-safe analog input. Power the 16×16 WS2812 matrix from its external 5 V supply with a shared ground and suitable data level shifting.
+- The matrix remains 256 LEDs, four per chess square. `matrix.py` maps each square through the configured serpentine/rotation/mirror layout. Host LED config is sent on every connection. Firmware accepts size 16 and caps brightness at 50% even if a higher maximum is requested.
+- The Pi opens `led.port` (glob or explicit USB serial path), falling back to `/dev/ttyACM0` when present. Exactly one backend process owns that port. The Pi GPIO input service is disabled during migration, as described in `pi-setup.txt`.
+- USB CDC uses 115200 baud in pyserial, one JSON object per line. Commands carry an integer `id`; replies echo it and contain `ok`, or `error` and `message`. Request timeout defaults to 0.5 s, with one retry using the same id. The link reconnects every 2 s and restores layout, brightness, and the last pattern.
 
-**Rendering (`checkmate/led/`)**
-- `LedController` keeps the current pattern + brightness and a background thread redraws ~20×/s for the `error` blink and the self-test / boot corners; it only writes when the frame actually changes.
-- `show` / `clear` / `set_brightness` set the **full** state, so repeating one is harmless. On `start()` it shows the 4 corners for ≤ 1 s (orientation check), then clears. `self_test()` lights a1 → h1 → h8 → a8, 0.5 s each, then off.
-- If the SPI device can't be opened or a write fails, `is_connected()` is `false`, commands return `LED_DISCONNECTED`, and the thread retries opening every 2 s — the game continues without LEDs.
+| Command | Additional fields | Reply fields beyond `id` and `ok` |
+|---|---|---|
+| `ping` | none | `fw: "checkmate-pico 2.0"` |
+| `configure` | `size`, `serpentine`, `rotation`, `mirror`, `max_brightness` (optional, defaults apply) | none |
+| `set` | `squares: [{sq, role}, ...]` | none |
+| `clear` | none | none |
+| `brightness` | `value` (integer 0–100) | none |
+| `test` | none | none |
+| `inputs` | none | `adc` (integer 0–65535), `presses` (integer wrapping at 2^30) |
 
-**Square → LED index mapping**
-`checkmate/led/matrix.py` (`BoardLayout`) converts square names to LED indexes; the rest of the system only ever names squares. Two steps:
-1. Square → 4 matrix cells: with `file` a=0 … h=7 and `rank` 1=0 … 8=7, the square covers matrix columns `2*file`, `2*file+1` and rows `2*rank`, `2*rank+1` (column 0 = a-file side, row 0 = rank-1 side).
-2. Matrix cell `(col, row)` → LED index 0–255: depends on the wiring (which corner the strip starts in, serpentine/zigzag, rotation). Tune it with the `size`, `serpentine`, `rotation`, `mirror` keys in `config.json` `led` — no code change.
+The firmware samples inputs continuously, including while processing LED commands. The Grove Button is active HIGH with 30 ms debounce and one counter increment per press. `inputs` does not reset that counter, so a retry cannot duplicate a click. The host polls at 20 Hz and seeds the counter on reconnect, avoiding stale Select events. Angle filtering and UI hysteresis suppress noise. Physical controls are active when the real LED/Pico module is active, including `CHECKMATE_FAKE=camera`. Faking `led` also disables this USB link.
 
-Use `self_test()` to check the mapping: if a1, h1, h8, a8 light up in the right corners, the whole mapping is correct.
+`LedController.set_input_callback(callback)` is installed by the server before `start()`. The callback publishes `{type: "input", position: 0..1, select: boolean}` to the UI WebSocket when the angle changes or a press arrives. On client connection the hub sends the latest angle with `select: false`. The UI maps the full bounded knob travel across the active screen's enabled controls, or across the move-history scroll range while browsing. Select follows the existing Enter handler. Keyboard Left/Right navigation still cycles through controls.
+
+LED rendering and 2 Hz error blinking run on the Pico. Self-test lights a1 red, h1 green, h8 blue, and a8 white for 0.5 s each. Upload `pico/main.py` and the shared `checkmate/led/matrix.py` (as `matrix.py`) using the steps in `pico/README.md`.
 
 ### 4.4 Fake LED
 `FakeLedController` has the same methods, always returns `{"ok": true}`, and prints the board as an 8×8 text grid (rank 8 on top) with role letters, so teammates can see what would be lit.
 
 ### 4.5 Technical notes
-- **Pi 5 + WS2812:** the usual `rpi_ws281x` / Adafruit NeoPixel (GPIO18 PWM) libraries do **not** work on the Pi 5. Drive the data line from **SPI MOSI (GPIO10, pin 19)** instead, via `spidev`. Enable SPI first: `dtparam=spi=on` in `/boot/firmware/config.txt`, then reboot; the device is `/dev/spidev0.0`.
-- **Encoding:** `checkmate/led/driver.py` turns each WS2812 bit into 3 SPI bits (`110`/`100`) at 2.4 MHz, so the SPI clock reproduces the ~0.4 µs / ~0.8 µs WS2812 timing. One 256-LED frame is ~2.3 KB and sends in a few ms.
-- **Power:** each WS2812 draws up to ~60 mA at full white, so 256 LEDs could draw up to **~15 A**. In practice at most ~32 squares (128 LEDs) are lit at once, ~3 A with brightness capped. Use an **external 5 V supply** (≥ 5 V 4 A, shared ground with the Pi), never the Pi's 5 V. Put a level shifter on the data line, and keep `max_brightness` capped (default 50%).
-- **Grove Base Hat:** it provides the ADC and Grove connectors for the other I/O, but it does not drive WS2812 — wire DIN to SPI MOSI.
+- A data-capable USB cable and the Pi user's `dialout` membership are required. Stop the backend before firmware upload, Thonny, or standalone serial diagnostics.
+- Use the same serial port for LEDs and controls. `LedController` serializes requests with one lock and polls inputs from its background thread.
+- Power the matrix from its external supply. At full white, 256 WS2812 LEDs can draw approximately 15 A. Keep the firmware brightness cap and shared ground, and size the supply for the actual load.
 
 ---
 
@@ -530,7 +534,7 @@ Use `self_test()` to check the mapping: if a1, h1, h8, a8 light up in the right 
 
 The UI **shows state and sends commands**. It never decides anything about the game itself: no legal-move checking, no clock, no game state of its own.
 
-**Input is a rotary encoder and one Select switch.** The Pi sends `ArrowLeft` or `ArrowRight` for each turn by one detent and `Enter` for Select. Every screen must be usable with those three key events. Turn to move focus and press Select to activate the focused control, including on-screen Back and Close actions. A USB keyboard works the same way for testing. See [the Pi setup](../pi-setup.txt).
+**Input is a bounded Grove Rotary Angle Sensor and one Grove Button on the Pico shield.** Angle/Select messages arrive over the shared USB link and UI WebSocket (4.3). Turn to move focus and press Select to activate, including Back, Close, and Flip display. Keyboard Left/Right/Enter remains available for laptop testing. See [the Pi setup](../pi-setup.txt).
 
 ### 5.1 Backend: FastAPI server (`checkmate/server/`)
 

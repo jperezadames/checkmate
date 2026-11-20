@@ -29,9 +29,9 @@ Click **Fill window** to hide the preview frame; reload to restore it. To check 
 
 ## Rotary navigation + Select
 
-The product uses a rotary encoder and one Select button. Counterclockwise sends `ArrowLeft`, clockwise sends `ArrowRight`, and Select sends `Enter`. On a laptop, use Left, Right, and Enter.
+The product uses a Seeed Grove Rotary Angle Sensor on Pico shield A0 and a Grove Button on D20. The bounded knob spans the enabled controls on each screen. The button activates the highlight. On a laptop, Left/Right cycles through controls and Enter selects.
 
-- Rotation moves the gold highlight through enabled controls in a fixed document order, wrapping at either end. Controls need not share a row. Turning never activates an action.
+- Knob position maps across enabled controls in document order, with hysteresis near boundaries. In move-history browsing, the full sweep scrolls from first to last move. Laptop Left/Right wraps at either end. Controls need not share a row. Turning never activates an action.
 - Setup has two separate screens: **Choose your color**, then **Choose your difficulty**. Selecting a color advances; selecting a difficulty marks it, and **Start game** confirms. **Back to color** preserves the selections; **Menu** leaves setup.
 - Every screen/dialog has a selectable Menu, Back, Close, Keep Playing, or Leave control. Escape is optional on a laptop and is never needed by the hardware flow.
 - The game starts focused on Settings. Turn to reach Hint (live human turn), move history, and Leave. Promotion starts on Queen, game over on Play Again, and device errors on Try Again. Disabled controls are skipped.
@@ -43,7 +43,7 @@ The product uses a rotary encoder and one Select button. Counterclockwise sends 
 
 ### Physical input integration
 
-Chromium receives ordinary keyboard events from the Pi. The `checkmate-rotary` service translates encoder detents into Left/Right key taps, and the Pi's `gpio-key` overlay sends Enter for Select. Follow the [Pi wiring and installation steps](../pi-setup.txt) and keep Chromium focused.
+The backend polls A0 and D20 over the same Pico USB connection used for LED commands, and sends `{type: "input", position: 0..1, select: boolean}` through the WebSocket. Select follows the existing Enter handler, including move-history browsing. The camera and screen connect to the Pi. Follow the [Pi wiring and installation steps](../pi-setup.txt), including disabling the old GPIO service and uploading both firmware files. `CHECKMATE_FAKE=camera` supports physical control testing with a simulated board. Faking `led` also disables the physical controls.
 
 ## Current behavior
 
@@ -85,6 +85,7 @@ On the Pi, build/copy `ui/dist/` before starting the team's FastAPI server. It s
 - `src/screens/GameScreen.css` — game, setup, and dialog layout.
 - `src/components/` — shared frame, board, analysis, move list, status, buttons, dialogs, and laptop preview.
 - `src/components/DirectionalNavigation.tsx` — shared focus, arrow movement, Enter activation, and modal boundaries.
+- `src/navigation/angle.ts` — bounded knob mapping with boundary hysteresis.
 - `src/navigation/spatial.ts` — earlier spatial-navigation helper, unused by rotary navigation.
 - `src/types/game.ts` — types for full contract state snapshots.
 - `src/mocks/gameStates.ts` — sample positions, scores, and phase snapshots, isolated from presentation components.

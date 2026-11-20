@@ -1,4 +1,6 @@
 import { useLayoutEffect, useRef, type ReactNode } from 'react';
+import { angleIndex } from '../navigation/angle';
+import type { ControlInput } from '../types/game';
 
 const STEPS: Record<string, number> = { ArrowLeft: -1, ArrowRight: 1 };
 const TARGETS = 'button, input, select, textarea, a[href], [tabindex]';
@@ -26,10 +28,11 @@ function firstTarget(scope: HTMLElement): HTMLElement | undefined {
   return targets.find(element => element.hasAttribute('data-nav-initial')) ?? targets[0];
 }
 
-/** Rotary turns arrive as Left/Right and cycle through controls in DOM order, wrapping at each end.
- * Select arrives as Enter. Laptop preview controls keep normal browser keys. */
+/** The bounded Pico dial maps its angle across enabled controls; Select uses the Enter path.
+ * Laptop Left/Right keys cycle through controls, wrapping at each end. */
 export default function DirectionalNavigation({ children, focusKey }: { children: ReactNode; focusKey: string }) {
   const root = useRef<HTMLDivElement>(null);
+  const lastPosition = useRef<number | null>(null);
 
   useLayoutEffect(() => {
     const element = root.current;
@@ -82,16 +85,45 @@ export default function DirectionalNavigation({ children, focusKey }: { children
       }
     }
 
+    function handlePicoInput(event: Event) {
+      const input = (event as CustomEvent<ControlInput>).detail;
+      if (!Number.isFinite(input.position) || input.position < 0 || input.position > 1) return;
+      const scope = activeScope(element!);
+      const targets = targetsIn(scope);
+      const current = document.activeElement as HTMLElement | null;
+      if (input.position !== lastPosition.current) {
+        lastPosition.current = input.position;
+        if (current?.matches('[data-nav-scroll="true"]')) {
+          current.scrollTop = input.position * (current.scrollHeight - current.clientHeight);
+        } else {
+          const index = angleIndex(input.position, targets.length, targets.indexOf(current!));
+          if (index >= 0 && targets[index] !== current) focusTarget(targets[index]);
+        }
+      }
+      if (input.select) {
+        const target = document.activeElement as HTMLElement | null;
+        if (target && targets.includes(target)) {
+          // Dispatch through the existing Enter path, including move-history browsing.
+          target.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+        } else {
+          const initial = firstTarget(scope);
+          if (initial) focusTarget(initial);
+        }
+      }
+    }
+
     const observer = new MutationObserver(() => {
       cancelAnimationFrame(pendingFrame);
       pendingFrame = requestAnimationFrame(recoverFocus);
     });
     observer.observe(element, { subtree: true, childList: true, attributes: true, attributeFilter: ['disabled', 'hidden', 'open'] });
     document.addEventListener('keydown', handleKey);
+    document.addEventListener('checkmate-input', handlePicoInput);
     return () => {
       observer.disconnect();
       cancelAnimationFrame(pendingFrame);
       document.removeEventListener('keydown', handleKey);
+      document.removeEventListener('checkmate-input', handlePicoInput);
     };
   }, []);
 

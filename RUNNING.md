@@ -13,7 +13,7 @@ One process, started from the repository root:
 
 It runs:
 - the FastAPI server: HTTP and the WebSocket `/ws` on http://127.0.0.1:8000 (contract section 5.1);
-- the game loop in a background thread. It opens the camera, Stockfish and the LED matrix (over SPI), and closes them on Ctrl+C;
+- the game loop in a background thread. It opens the camera, Stockfish and the Pico USB LED/control link, and closes them on Ctrl+C;
 - the UI's built files from `ui/dist/` at `/`, if that folder exists. Otherwise `/` is a 404 and the API still works.
 
 ## Real or fake modules
@@ -99,19 +99,21 @@ This prints every `info`, `state` and `toast` message as the UI receives them. T
 
 ### The UI
 
-With the backend running, start the UI's dev server and open http://127.0.0.1:5173. It connects to `ws://127.0.0.1:8000/ws` and shows the live game. With the fake camera, make the moves by clicking the screen's board (a piece, then its square; the computer's move too), or with the **Start position** / **Play the computer's move** buttons above it. The UI uses a rotary encoder plus Select: turn to move the highlight and press Select to activate. On a laptop, use ← → and Enter. Setup walks through color, difficulty, then the game. Select on-screen Back/Close controls to return:
+With the backend running, start the UI's dev server and open http://127.0.0.1:5173. It connects to `ws://127.0.0.1:8000/ws` and shows the live game. With the fake camera, make the moves by clicking the screen's board (a piece, then its square; the computer's move too), or with the **Start position** / **Play the computer's move** buttons above it. The UI uses the Pico Grove angle sensor plus Select: turn to move the highlight and press Select to activate. On a laptop, use ← → and Enter. Setup walks through color, difficulty, then the game. Select on-screen Back/Close controls to return:
 
 ```bash
 cd ui && npm install && npm run dev
 ```
+
+For physical control testing with a simulated camera, use `CHECKMATE_FAKE=camera` so the real Pico link stays active. `CHECKMATE_FAKE=led` or `all` disables the Pico link and its controls.
 
 Or build it once (`cd ui && npm run build`) and restart the backend: it then serves the UI itself at http://127.0.0.1:8000/, like on the Pi. `?mock=1` shows sample data without a backend; `POST /api/fake/state` shows any phase with the live UI. More in [`ui/README.md`](ui/README.md).
 
 ## On the Raspberry Pi
 
 Once:
-1. Follow [`pi-setup.txt`](pi-setup.txt) to install Stockfish, set up the venv, and configure the rotary encoder and Select button.
-2. Wire the WS2812 matrix's data line to SPI MOSI (GPIO10, pin 19) through a level shifter, enable SPI (`dtparam=spi=on`), and power the strip from an external 5 V supply (see [`pi-setup.txt`](pi-setup.txt)).
+1. Follow [`pi-setup.txt`](pi-setup.txt) to install Stockfish, set up the venv, and flash the Pico and wire the Grove angle sensor (A0), Select (D20), and matrix data (D16).
+2. Connect the Pico to the Pi by USB. Use the shield at 3.3 V for the controls and the external 5 V supply for the matrix, with shared ground and the data level shifter described in [`pi-setup.txt`](pi-setup.txt).
 3. Build the UI on a laptop (`cd ui && npm run build`) and copy `ui/dist/` to the Pi. Node.js isn't needed on the Pi.
 4. Print the calibration markers (`.venv/bin/python scripts/camera/make_aruco_markers.py`) and place them just outside the corners: id 0 at a1, 1 at h1, 2 at h8, 3 at a8. Or set `camera.manual_corners` in `config.json` instead.
 
@@ -146,7 +148,7 @@ To aim the camera before starting the server, use `.venv/bin/python scripts/came
 | phase `error`, "Camera problem: ..." | camera unplugged, or no frames for a few seconds | check the cable, then Retry; Calibrate if it moved |
 | start screen: "The camera isn't calibrated" | no `calibration.json` yet | calibrate (above) |
 | squares misread after calibrating: empty squares as `W` or `B` on `/api/camera.jpg` | a calibration made in another place or light (a failed calibration keeps the old one), or one small part of the board lit differently (a shadow, glare); the whole picture getting brighter or darker is corrected by the markers | keep the 4 markers in view; remove `calibration.json`, restart and calibrate again |
-| `devices.led` is `"error"`, the game goes on | SPI isn't enabled, no permission for `/dev/spidev0.0`, or the matrix isn't wired/powered | enable SPI (`dtparam=spi=on`), check wiring/power. It reconnects by itself within about 2 s; until then the UI shows the computer's moves |
+| `devices.led` is `"error"`, the game goes on | Pico USB disconnected, serial permission missing, firmware outdated, or matrix unpowered | check the Pico USB cable, `dialout` group, `led.port`, firmware, and matrix power. It reconnects by itself within about 2 s; until then the UI shows the computer's moves |
 | the setup check never ends | the board isn't in the starting position (`board_problem.squares` says where); with the fake camera, the last game's position | fix those squares; with the fake camera, send the start FEN to `/api/fake/board` |
 | `/` returns 404 | no `ui/dist/` | build the UI, or use the API directly |
 | `address already in use` | another server is on port 8000 | stop it, or use `--port` |

@@ -1,11 +1,10 @@
 """LED, Pi side (owner: Hsin-Chen). Contract: contracts/interfaces.md section 4.
 
-The Pi drives the WS2812 matrix directly over SPI -- there is no Pico.
+The Pico drives the matrix on D16 and reads the Grove controls on A0/D20.
 
 Files:
-    controller.py  LedController: render thread + SPI output (sections 4.1, 4.3)
-    driver.py      Ws2812Spi: WS2812-over-SPI encoding and output
-    matrix.py      role -> colour table and square -> LED mapping (sections 4.2, 4.3)
+    controller.py  LedController: shared USB serial link, controls, and LED commands
+    matrix.py      geometry/colours shared with the MicroPython firmware
     fake.py        FakeLedController: prints an 8x8 text grid (section 4.4)
     squares.py     role names and the check of show()'s argument (sections 4.1, 4.2)
 """

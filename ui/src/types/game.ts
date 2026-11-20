@@ -65,6 +65,9 @@ export interface Info { type: 'info'; version: string; elo_min: number; elo_max:
 /** Short notification, shown for about 3 s (§5.6). */
 export interface Toast { type: 'toast'; level: 'info' | 'warning' | 'error'; text: string }
 
+/** Pico angle (0–1) and debounced Select, delivered by the shared USB link. */
+export interface ControlInput { type: 'input'; position: number; select: boolean }
+
 /** UI → backend commands (§5.5). Which phase allows which: §5.4. */
 export type Command =
   | { type: 'start_game'; human_color: Color | 'random'; elo: number; mode: 'play' | 'practice' }

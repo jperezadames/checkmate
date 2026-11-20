@@ -1,8 +1,7 @@
 """Board geometry and colours for the LED matrix (contracts/interfaces.md sections 4.2, 4.3).
 
-Moved here from the old Pico firmware: the Pi now drives the WS2812 matrix directly, so the Pi
-owns the role -> colour table (4.2) and the square -> LED index mapping (4.3). Main still only
-ever names squares and roles; colours live in one place here.
+Shared with the Pico. Upload this file as matrix.py beside main.py on the Pico.
+The Pi sends square and role names; the Pico renders their colours and layout.
 """
 
 FILES = "abcdefgh"
@@ -14,7 +13,7 @@ ROLE_COLORS = {
     "engine_to": (0, 255, 0),     # green
     "hint_from": (0, 255, 255),   # cyan
     "hint_to": (255, 255, 0),     # yellow
-    "error": (255, 0, 0),         # red, blinks at 2 Hz (handled in controller.py)
+    "error": (255, 0, 0),         # red, blinks at 2 Hz in pico/main.py
     "check": (255, 128, 0),       # orange
     "last_move": (40, 40, 40),    # dim white
 }

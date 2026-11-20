@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { Command, GameState, Info, Toast } from './types/game';
+import type { Command, ControlInput, GameState, Info, Toast } from './types/game';
 
 /** The backend (§5.1). Served by FastAPI it is the same host; under the Vite dev server it is
  *  the backend on port 8000. `?backend=host:port` points somewhere else (e.g. the Pi). */
@@ -69,10 +69,11 @@ export function useBackend(): Backend {
       };
       ws.onmessage = event => {
         if (socket.current !== ws) return;
-        const message = JSON.parse(event.data) as Info | GameState | Toast;
+        const message = JSON.parse(event.data) as Info | GameState | Toast | ControlInput;
         if (message.type === 'info') setInfo(message);
         else if (message.type === 'state') setState(message);
         else if (message.type === 'toast') showToast(message);
+        else if (message.type === 'input') document.dispatchEvent(new CustomEvent('checkmate-input', { detail: message }));
       };
       ws.onclose = () => {
         if (socket.current !== ws) return;

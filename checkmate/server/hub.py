@@ -18,6 +18,7 @@ class Hub:
         self.commands = queue.Queue()
         self.info = None      # last `info` and `state` from the loop, for new clients and /api
         self.state = None
+        self.input = None     # latest dial angle, without replaying a Select press
         self.clients = set()  # one asyncio.Queue per WebSocket
         self.loop = None      # the server's asyncio loop, while it runs
 
@@ -28,6 +29,8 @@ class Hub:
             self.info = msg
         elif msg["type"] == "state":
             self.state = msg
+        elif msg["type"] == "input":
+            self.input = dict(msg, select=False)
         loop = self.loop
         if loop is not None:
             try:
@@ -44,7 +47,7 @@ class Hub:
     def connect(self) -> asyncio.Queue:
         """A new WebSocket's queue, starting with the current info and state (section 5.1)."""
         out = asyncio.Queue()
-        for msg in (self.info, self.state):
+        for msg in (self.info, self.state, self.input):
             if msg is not None:
                 out.put_nowait(msg)
         self.clients.add(out)

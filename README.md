@@ -49,21 +49,22 @@ The physical system will be housed in a 3D-printed enclosure that hides the wiri
 ### 4.2 Hardware Components
 | Component | Description | Quantity |
 |---------|-------------|----------|
-| Raspberry Pi 5 + Grove Base Hat | Runs everything; all I/O (camera, rotary, button, LED, screen) wires directly to the Pi | 1 |
-| 16×16 LED Matrix (WS2812) | Visual guidance for source and destination squares; 2×2 LEDs under each square. Driven directly by the Pi over SPI (MOSI, GPIO10) | 1 |
-| Screen (~7") + rotary encoder + Select switch | Game setup, practice modes, and move feedback. The encoder and switch connect to the Pi's GPIO. | 1 each |
+| Raspberry Pi 5 | Runs the camera, Stockfish, game logic, backend, and screen | 1 |
+| Raspberry Pi Pico + Seeed Grove Shield | USB controller for the angle sensor (A0), Select button (D20), and LED matrix data (D16) | 1 |
+| 16×16 LED Matrix (WS2812) | Visual guidance for source and destination squares; 2×2 LEDs under each square. Driven by the Pico on shield D16 (GP16) | 1 |
+| Screen (~7") + Grove Rotary Angle Sensor + Select button | Game setup, practice modes, and move feedback. The angle sensor and button connect to the Pico shield's A0 and D20 ports. | 1 each |
 | USB webcam | Monitors the physical chessboard from above for board-state and move detection; its microphone is the voice input | 1 |
 | 3D-Printed Container / Enclosure | Houses the board electronics and hides wiring while keeping components accessible | 1 |
 | 3D-Printed Camera Stand | Holds the camera steadily above all 64 squares | 1 |
 
-- **Schematic / physical arrangement:** The camera will be fixed above the chessboard. The 16×16 LED matrix will be synchronized with the board to indicate moves. The screen, rotary encoder, and Select switch will stand beside the board for game controls and training feedback. Wiring and electronics will be contained beneath the board in the 3D-printed enclosure.
+- **Schematic / physical arrangement:** The camera will be fixed above the chessboard. The 16×16 LED matrix will be synchronized with the board to indicate moves. The screen, rotary angle sensor, and Select switch will stand beside the board for game controls and training feedback. Wiring and electronics will be contained beneath the board in the 3D-printed enclosure.
 
 ### 4.3 Software Components
 - **Libraries / Frameworks:**
   - Stockfish chess engine/API for move generation, legal moves, game management, analysis, and adjustable difficulty.
   - Camera/board-processing software for converting the camera view into an 8×8 board representation and detecting changes between positions.
   - Trainer software for move explanations, advice, questions, and conversational feedback.
-- **Communication Protocols:** Defined in [`contracts/interfaces.md`](contracts/interfaces.md): SPI from the Pi to the WS2812 LED matrix, HTTP + WebSocket between the backend and the UI, and plain function calls between the Python modules.
+- **Communication Protocols:** Defined in [`contracts/interfaces.md`](contracts/interfaces.md): USB serial from the Pi to the Pico for LED commands and control input, HTTP + WebSocket between the backend and the UI, and plain function calls between the Python modules.
 - **Software Structure:**
   - Camera input and board-processing module
   - Move detection and validation module
@@ -170,7 +171,7 @@ uv pip install -r requirements-dev.txt
 
 ### Raspberry Pi
 
-The USB webcam needs nothing extra (`"backend": "v4l2"` in `config.json`). Only the Raspberry Pi camera module (`"backend": "picamera2"`) needs Picamera2, which must come from apt (`sudo apt install python3-picamera2`); the venv is created with `--system-site-packages` so it stays visible (`numpy<2` in `requirements.txt` keeps it compatible). See [`pi-setup.txt`](pi-setup.txt) for the rotary encoder and Select wiring and setup.
+The USB webcam needs nothing extra (`"backend": "v4l2"` in `config.json`). Only the Raspberry Pi camera module (`"backend": "picamera2"`) needs Picamera2, which must come from apt (`sudo apt install python3-picamera2`); the venv is created with `--system-site-packages` so it stays visible (`numpy<2` in `requirements.txt` keeps it compatible). See [`pi-setup.txt`](pi-setup.txt) for the Pico angle sensor and Select wiring and setup.
 
 ```bash
 sudo apt install stockfish
@@ -216,11 +217,12 @@ checkmate/
 │   ├── camera.py        Camera (background thread, observations, restart)
 │   └── fake.py          FakeCamera
 ├── engine/              Joel: GameEngine, FakeGameEngine
-├── led/                 Hsin-Chen: LedController (WS2812 over SPI), driver.py, matrix.py, FakeLedController
+├── led/                 Hsin-Chen: Pico USB LedController, shared matrix.py, FakeLedController
 ├── server/              FastAPI app (app.py), /api routes (api.py), /ws (ws.py),
 │                        hub.py between the routes and the loop thread, /api/fake/* (fake.py)
 └── game/                game loop (loop.py), command rules (commands.py)
 ui/                      Jayden: frontend, built into ui/dist/
+pico/                    MicroPython USB LED/control firmware (upload main.py and the shared matrix.py)
 scripts/<module>/        manual tools, e.g. scripts/camera/preview.py (press c to calibrate, q to quit)
                          and scripts/camera/make_aruco_markers.py (id 0 → a1, 1 → h1, 2 → h8, 3 → a8 corner)
 tests/<module>/          pytest tests

@@ -15,9 +15,8 @@
     "think_time_s": 1.0
   },
   "led": {
-    "spi_bus": 0,
-    "spi_device": 0,
-    "spi_hz": 2400000,
+    "port": "/dev/serial/by-id/usb-MicroPython_*-if00",
+    "reply_timeout_s": 0.5,
     "brightness": 40,
     "max_brightness": 50,
     "size": 16,

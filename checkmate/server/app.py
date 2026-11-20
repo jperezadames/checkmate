@@ -55,6 +55,8 @@ def create_app(config: dict, fakes=frozenset()) -> FastAPI:
         camera, engine, led = (MODULES[name][name in fakes](config[name]) for name in MODULES)
         app.state.camera = camera  # for /api/fake/board only; nothing else touches it
         hub.loop = asyncio.get_running_loop()
+        if "led" not in fakes:
+            led.set_input_callback(hub.publish)
         stop = threading.Event()
         thread = threading.Thread(target=run_game_loop, name="game", daemon=True,
                                   args=(camera, engine, led, hub.commands, hub.publish, stop))
