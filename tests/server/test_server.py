@@ -120,7 +120,14 @@ def test_fake_state_is_broadcast_as_is(client):
 
 
 def test_camera_jpg_is_404_without_an_image(client):
-    assert client.get("/api/camera.jpg").status_code == 404
+    for path in ("/api/camera.jpg", "/api/frame.jpg", "/api/ai.jpg", "/api/ai.jpg?sent=1"):
+        assert client.get(path).status_code == 404
+
+
+def test_live_page_shows_both_pictures(client):
+    res = client.get("/api/live")
+    assert res.status_code == 200 and res.headers["content-type"].startswith("text/html")
+    assert '"frame.jpg"' in res.text and '"ai.jpg"' in res.text and "setInterval" in res.text
 
 
 def test_fake_routes_only_with_fakes():

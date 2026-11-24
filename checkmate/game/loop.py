@@ -21,6 +21,7 @@ from checkmate.game.commands import check_command
 
 PERIOD_S = 0.1         # about 10 Hz
 CAMERA_GRACE_S = 3.0   # CAMERA_NOT_READY for this long -> error phase (a reopened camera needs a moment)
+PROBLEM_DELAY_S = 2.5  # a capture or castling passes through positions that are no move yet
 CRASH_PAUSE_S = 1.0    # after a bug in the loop, so its toast doesn't repeat 10 times a second
 ELO_MIN, ELO_MAX = 1320, 3190  # section 1.1, until the engine reports its own range
 
@@ -47,11 +48,22 @@ WINNERS = {"1-0": "white", "0-1": "black"}
 
 
 class DebugImageRequest:
-    """For /api/camera.jpg: the server puts one on the command queue and waits for `reply`, so
-    camera.get_debug_image() is called from the loop thread like every other module call."""
+    """For the camera pictures under /api (camera.jpg, frame.jpg, ai.jpg): the server puts one on
+    the command queue and waits for `reply`, so the camera is called from the loop thread like
+    every other module call. `kind` is a key of IMAGE_KINDS."""
 
-    def __init__(self):
+    def __init__(self, kind="board"):
+        self.kind = kind
         self.reply = Future()
+
+
+# DebugImageRequest.kind -> how the camera makes that picture (section 2.4)
+IMAGE_KINDS = {
+    "board": lambda camera: camera.get_debug_image(),
+    "frame": lambda camera: camera.get_frame_image(),
+    "ai": lambda camera: camera.get_ai_image(),
+    "ai_sent": lambda camera: camera.get_ai_image(sent=True),
+}
 
 
 def run_game_loop(camera, engine, led, commands, broadcast, stop_event):
@@ -96,6 +108,7 @@ class GameLoop:
         self.rating = None
         self.evaluation = None
         self.board_problem = None
+        self.pending_problem = None  # a wrong board not shown yet (PROBLEM_DELAY_S)
         self.last_occupancy = None   # last stable occupancy processed
 
     # -- lifecycle ----------------------------------------------------------------------------
@@ -128,7 +141,7 @@ class GameLoop:
             except queue.Empty:
                 break
             if isinstance(item, DebugImageRequest):
-                item.reply.set_result(self.camera.get_debug_image())
+                item.reply.set_result(IMAGE_KINDS[item.kind](self.camera))
             else:
                 self.handle(item)
         PHASE_STEPS.get(self.phase, GameLoop._wait)(self)
@@ -237,6 +250,7 @@ class GameLoop:
 
     def _step_human(self):
         """human_turn and promotion_choice: look for the human's move."""
+        self._show_pending_problem()
         occupancy = self._new_occupancy()
         if occupancy is None:
             return
@@ -255,7 +269,7 @@ class GameLoop:
         elif status == "invalid":
             self.promotion = None
             self.phase = "human_turn"
-            self._board_problem(res["changed_squares"], ILLEGAL_PROBLEM)
+            self._board_problem_later(occupancy, res["changed_squares"], ILLEGAL_PROBLEM)
 
     def _step_engine_thinking(self):
         res = self.engine.get_engine_move()  # blocks about think_time_s
@@ -269,6 +283,7 @@ class GameLoop:
             self._fail("engine", res, resume="engine_thinking")
 
     def _step_engine_move_pending(self):
+        self._show_pending_problem()
         occupancy = self._new_occupancy()
         if occupancy is None:
             return
@@ -282,7 +297,8 @@ class GameLoop:
         elif res["ok"]:
             board = chess.Board(self.game["fen"])
             board.push_uci(move)
-            self._board_problem(_diff(occupancy_from_fen(board.fen()), occupancy), WRONG_MOVE_PROBLEM)
+            self._board_problem_later(occupancy, _diff(occupancy_from_fen(board.fen()), occupancy),
+                                      WRONG_MOVE_PROBLEM)
 
     def _play(self, uci):
         """A move seen on the board (human's, or the computer's once played): push and rate it."""
@@ -335,6 +351,26 @@ class GameLoop:
 
     def _board_problem(self, squares, text):
         self.board_problem = {"squares": squares, "text": text}
+        self.pending_problem = None
+
+    def _board_problem_later(self, occupancy, squares, text):
+        """Mark these squares if the board stays like `occupancy` for PROBLEM_DELAY_S: the player
+        may still be in the middle of a capture or castling. A problem already shown is updated at
+        once."""
+        if self.board_problem is not None:
+            self._board_problem(squares, text)
+        else:
+            self.pending_problem = {"occupancy": occupancy, "phase": self.phase, "since": self.clock(),
+                                    "squares": squares, "text": text}
+
+    def _show_pending_problem(self):
+        p = self.pending_problem
+        if p is None:
+            return
+        if p["occupancy"] != self.last_occupancy or p["phase"] != self.phase:
+            self.pending_problem = None  # the board changed, or a move was made: not a problem
+        elif self.clock() - p["since"] >= PROBLEM_DELAY_S:
+            self._board_problem(p["squares"], p["text"])
 
     def _fail(self, device, res, resume):
         """CAMERA_NOT_READY / ENGINE_ERROR (or any engine error): go to the error phase."""

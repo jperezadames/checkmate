@@ -11,6 +11,12 @@ SMALL = 64
 MOTION_THRESHOLD = 10.0
 
 
+def shrink(warped):
+    """The warped board as a SMALL x SMALL grayscale image, to compare with another one."""
+    gray = cv2.cvtColor(warped, cv2.COLOR_BGR2GRAY)
+    return cv2.resize(gray, (SMALL, SMALL), interpolation=cv2.INTER_AREA).astype(np.float32)
+
+
 def max_square_diff(a, b):
     """Largest per-square mean absolute difference between two SMALL x SMALL images."""
     per_square = np.abs(a - b).reshape(8, SMALL // 8, 8, SMALL // 8).mean(axis=(1, 3))
@@ -29,8 +35,7 @@ class MotionDetector:
 
     def update(self, warped, ts) -> bool:
         """Feed the next warped board; True if no square has changed for stable_time_s."""
-        gray = cv2.cvtColor(warped, cv2.COLOR_BGR2GRAY)
-        gray = cv2.resize(gray, (SMALL, SMALL), interpolation=cv2.INTER_AREA).astype(np.float32)
+        gray = shrink(warped)
         if self._prev_gray is None or max_square_diff(gray, self._prev_gray) > MOTION_THRESHOLD:
             self._last_motion = ts
         self._prev_gray = gray

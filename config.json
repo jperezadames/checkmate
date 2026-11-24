@@ -6,7 +6,18 @@
     "height": 720,
     "calibration_file": "calibration.json",
     "stable_time_s": 0.5,
-    "manual_corners": null
+    "manual_corners": null,
+    "classifier": "opencv",
+    "ai": {
+      "model": "deepseek-flash",
+      "thinking": false,
+      "temperature": 0,
+      "retry_temperature": 0.5,
+      "retries": 2,
+      "timeout_s": 15,
+      "retry_s": 2,
+      "give_up_s": 15
+    }
   },
   "engine": {
     "stockfish_path": "/usr/games/stockfish",

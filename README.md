@@ -213,6 +213,7 @@ checkmate/
 │   ├── aruco.py         ArUco marker ids, find board corners from the markers
 │   ├── calibration.py   save / load the calibration file
 │   ├── motion.py        per-square motion check behind "stable"
+│   ├── ai_reader.py     classifier "ai": a vision model (DeepSeek) reads the squares
 │   ├── sources.py       Picamera2 / USB webcam frame sources
 │   ├── camera.py        Camera (background thread, observations, restart)
 │   └── fake.py          FakeCamera
@@ -224,7 +225,7 @@ checkmate/
 ui/                      Jayden: frontend, built into ui/dist/
 pico/                    MicroPython USB LED/control firmware (upload main.py and the shared matrix.py)
 scripts/<module>/        manual tools, e.g. scripts/camera/preview.py (press c to calibrate, q to quit)
-                         and scripts/camera/make_aruco_markers.py (id 0 → a1, 1 → h1, 2 → h8, 3 → a8 corner)
+                         and scripts/camera/make_aruco_markers.py (one marker just outside each corner, any order)
 tests/<module>/          pytest tests
 contracts/interfaces.md  interface contracts between modules
 config.json              one section per module

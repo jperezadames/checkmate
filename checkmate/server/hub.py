@@ -65,9 +65,10 @@ class Hub:
             self.commands.put(cmd)
         return problem
 
-    def debug_image(self):
-        """JPEG bytes from camera.get_debug_image(), via the loop thread, or None. Blocks."""
-        request = DebugImageRequest()
+    def debug_image(self, kind="board"):
+        """JPEG bytes of a camera picture (game.loop.IMAGE_KINDS), via the loop thread, or None.
+        Blocks."""
+        request = DebugImageRequest(kind)
         self.commands.put(request)
         try:
             return request.reply.result(timeout=IMAGE_TIMEOUT_S)

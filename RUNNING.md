@@ -115,7 +115,7 @@ Once:
 1. Follow [`pi-setup.txt`](pi-setup.txt) to install Stockfish, set up the venv, and flash the Pico and wire the Grove angle sensor (A0), Select (D20), and matrix data (D16).
 2. Connect the Pico to the Pi by USB. Use the shield at 3.3 V for the controls and the external 5 V supply for the matrix, with shared ground and the data level shifter described in [`pi-setup.txt`](pi-setup.txt).
 3. Build the UI on a laptop (`cd ui && npm run build`) and copy `ui/dist/` to the Pi. Node.js isn't needed on the Pi.
-4. Print the calibration markers (`.venv/bin/python scripts/camera/make_aruco_markers.py`) and place them just outside the corners: id 0 at a1, 1 at h1, 2 at h8, 3 at a8. Or set `camera.manual_corners` in `config.json` instead.
+4. Print the calibration markers (`.venv/bin/python scripts/camera/make_aruco_markers.py`) and place one just outside each corner of the board, in any order. Calibrate with white on the side the white player sits: the pieces decide where a1 is. Or set `camera.manual_corners` in `config.json` instead.
 
 Start the server (every module real), then open http://127.0.0.1:8000/ in Chromium in kiosk mode (`chromium --kiosk http://127.0.0.1:8000/`; on Bookworm the command is `chromium-browser`):
 
@@ -136,14 +136,37 @@ It is saved to `calibration.json` and loaded on every later start. Calibrate aga
 ```bash
 curl -s localhost:8000/api/health                    # {"ok": true, "devices": {"camera": "ok", "engine": "ok", "led": "ok"}}
 curl -s localhost:8000/api/camera.jpg -o board.jpg   # what the camera sees, with the grid and the detections
+curl -s localhost:8000/api/frame.jpg -o frame.jpg    # the camera frame as it is
+curl -s localhost:8000/api/ai.jpg -o ai.jpg          # that frame straightened and labelled for a vision model (after calibration)
 ```
 
+Or open http://127.0.0.1:8000/api/live: both pictures side by side, refreshed every 0.5 s.
+
 To aim the camera before starting the server, use `.venv/bin/python scripts/camera/preview.py` (c = calibrate, q = quit). Stop the server first: only one program can hold the camera.
+
+### Reading the squares with an AI (DeepSeek)
+
+By default the camera tells empty, white and black squares apart by their colors (`camera.classifier` `"opencv"`). With `"ai"`, a vision model reads them instead: each time the board is still and looks different from the last read, the camera sends the straightened board with every square's name written in it to DeepSeek's `deepseek-flash`, and reports the 64 squares it answers. Calibration, which side is white, when the board is still, and the move itself stay as they are. Contract section 2.8 has the details.
+
+1. Get an API key at platform.deepseek.com and put it in a `.env` file at the repository root, which git ignores (never in `config.json`, which is in git):
+   ```bash
+   cp .env.example .env   # then write the key after DEEPSEEK_API_KEY=
+   ```
+   A `DEEPSEEK_API_KEY` set in the shell's environment is used instead, if there is one.
+2. Try one photo first. It prints the 64 squares the model read and writes `PHOTO_ai.jpg`, the picture it was sent (one paid request):
+   ```bash
+   .venv/bin/python scripts/camera/try_ai_reader.py board.jpg
+   ```
+   `board.jpg` from `/api/camera.jpg` before calibrating is the raw frame, or use a test board from `scripts/camera/make_test_board.py`.
+3. Set `"classifier": "ai"` in the `camera` section of `config.json` and restart the server. `/api/camera.jpg` then shows the board with the squares as the model read them, and http://127.0.0.1:8000/api/live shows, refreshed every 0.5 s, the camera frame next to the picture the model gets from it, plus the last picture it was actually sent. The page works with `"opencv"` too (after calibrating), so the straightening and the labels can be checked before switching.
+
+Each move waits for the model's answer (a few seconds) before the game loop sees it. `camera.ai` holds the model, `thinking` (off), `temperature` (0, and `retry_temperature` for the up to `retries` new tries when an answer is unusable), `timeout_s` per request, `retry_s` between failed reads, and `give_up_s` before the camera reports the problem.
 
 ## When something is wrong
 
 | You see | Why | What to do |
 |---|---|---|
+| phase `error`, "Camera problem: can't read the board with the AI: ..." | classifier `"ai"`: no network, `DEEPSEEK_API_KEY` not set or wrong, or the model's answers unusable | check the message; `try_ai_reader.py` on a photo shows the same error; Retry, or set `"classifier": "opencv"` |
 | phase `error`, "Engine problem: could not start Stockfish at ..." | Stockfish isn't installed, or is at another path | install it; on a laptop use `CHECKMATE_CONFIG` (above); then Retry |
 | phase `error`, "Camera problem: ..." | camera unplugged, or no frames for a few seconds | check the cable, then Retry; Calibrate if it moved |
 | start screen: "The camera isn't calibrated" | no `calibration.json` yet | calibrate (above) |

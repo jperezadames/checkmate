@@ -11,6 +11,9 @@ calibration.json
 # Local config override (CHECKMATE_CONFIG), e.g. another stockfish_path on a laptop
 config.local.json
 
+# API keys (DEEPSEEK_API_KEY); .env.example shows what goes in it
+.env
+
 # Frontend
 ui/node_modules/
 

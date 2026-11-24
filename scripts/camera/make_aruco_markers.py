@@ -1,7 +1,8 @@
 """Generate the 4 ArUco markers used for camera calibration.
 
-Print them and place each one just outside a board corner, touching it:
-    id 0 -> a1 corner, id 1 -> h1 corner, id 2 -> h8 corner, id 3 -> a8 corner
+Print them and place one just outside each board corner, touching it, in any order: the
+numbers can't be read by eye and don't need to match a corner. Calibration finds a1 from the
+pieces, so calibrate with white on the side the white player sits.
 
 Usage: python scripts/camera/make_aruco_markers.py [out_dir] [size_px]
 """

@@ -176,6 +176,9 @@ def test_illegal_move_shows_a_problem_until_put_back():
     occ[12], occ[36] = ".", "W"  # e2 pawn put on e5
     game.camera.occupancy = "".join(occ)
     state = game.step()
+    assert state["board_problem"] is None  # maybe the player isn't done yet
+    game.now += 3
+    state = game.step()
     assert state["phase"] == "human_turn"
     assert state["board_problem"]["squares"] == ["e2", "e5"]
     assert state["message"] == state["board_problem"]["text"]
@@ -188,6 +191,29 @@ def test_illegal_move_shows_a_problem_until_put_back():
     assert game.led.lit == {}
 
 
+def test_a_capture_in_two_steps_is_no_problem():
+    game = Game(ScriptedEngine(["d7d5"]))
+    game.start_game()
+    game.play("e2e4")
+    game.step()
+    game.step()
+    game.play("d7d5")
+    game.step()
+    # exd5 in two steps: the black pawn is taken off first, and the player stops for a moment.
+    occ = list(game.camera.occupancy)
+    occ[35] = "."  # d5
+    game.camera.occupancy = "".join(occ)
+    game.now += 1
+    assert game.step()["board_problem"] is None
+    game.play("e4d5")
+    game.now += 1
+    state = game.step()
+    assert state["board_problem"] is None
+    assert state["moves_san"][-1] == "exd5"
+    game.now += 5
+    assert game.step()["board_problem"] is None
+
+
 def test_wrong_engine_move_marks_the_squares_that_differ_from_its_result():
     game = Game(ScriptedEngine(["e7e5"]))
     game.start_game()
@@ -195,6 +221,8 @@ def test_wrong_engine_move_marks_the_squares_that_differ_from_its_result():
     game.step()
     game.step()
     game.play("e7e6")  # instead of e7e5
+    assert game.step()["board_problem"] is None
+    game.now += 3
     state = game.step()
     assert state["phase"] == "engine_move_pending"
     assert state["board_problem"]["squares"] == ["e5", "e6"]
@@ -384,9 +412,9 @@ def test_uncalibrated_camera_then_calibrate():
 
 def test_debug_image_request_is_answered_in_the_loop():
     game = Game()
-    request = DebugImageRequest()
-    game.step(request)
-    assert request.reply.result(timeout=0) is None  # FakeCamera has no image
+    requests = [DebugImageRequest(kind) for kind in ("board", "frame", "ai", "ai_sent")]
+    game.step(*requests)
+    assert all(r.reply.result(timeout=0) is None for r in requests)  # FakeCamera has no image
 
 
 @pytest.mark.parametrize("move, lit", [
