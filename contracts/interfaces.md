@@ -155,7 +155,10 @@ One file, one section per module. Each module only reads its own section.
     "height": 720,
     "calibration_file": "calibration.json",
     "stable_time_s": 0.5,
-    "manual_corners": null
+    "manual_corners": null,
+    "classifier": "opencv",
+    "ai": {"model": "deepseek-flash", "thinking": false, "temperature": 0, "retry_temperature": 0.5,
+           "retries": 2, "timeout_s": 15, "retry_s": 2, "give_up_s": 15}
   },
   "engine": {
     "stockfish_path": "/usr/games/stockfish",
@@ -182,7 +185,8 @@ One file, one section per module. Each module only reads its own section.
 ```
 `camera.backend`: `"picamera2"` for the Raspberry Pi camera module, `"v4l2"` for a USB webcam.
 `camera.calibration_file`: a relative path is relative to the repo root.
-`camera.manual_corners`: `null` to find the board with 4 ArUco markers (`DICT_4X4_50`, ids 0, 1, 2, 3 just outside the a1, h1, h8, a8 corners; print them with `scripts/camera/make_aruco_markers.py`), or 4 `[x, y]` frame pixels (a1, h1, h8, a8 corners) to use instead of markers.
+`camera.classifier`: `"opencv"` tells empty, white and black squares apart by their colors; `"ai"` has a vision model read them (2.8). `camera.ai` is only read with `"ai"`; the API key comes from the environment variable `DEEPSEEK_API_KEY`, or else from the git-ignored `.env` file in the repo root, never from this file.
+`camera.manual_corners`: `null` to find the board with 4 ArUco markers (`DICT_4X4_50`, ids 0, 1, 2, 3, one just outside each board corner in any order; print them with `scripts/camera/make_aruco_markers.py`), or 4 `[x, y]` frame pixels of the board corners, in any order, to use instead of markers. Calibration decides which corner is a1 from the pieces (2.2).
 
 ---
 
@@ -249,6 +253,10 @@ Errors: `CAMERA_NOT_READY` (not started, not calibrated, calibrated at a differe
 ### 2.4 `Camera.get_debug_image() -> bytes | None` (optional, nice to have)
 JPEG of the warped top-down board with the grid and detected colors drawn on. The UI can show it on a "camera check" screen. Before calibration it is the raw camera frame, so the camera can be aimed. `None` if there's no frame.
 
+`Camera.get_frame_image() -> bytes | None`: JPEG of the latest camera frame as it is. `None` before the first frame.
+
+`Camera.get_ai_image(sent=False) -> bytes | None`: JPEG of the picture the vision model gets (2.8), made from the current frame: straightened, edges grayed, squares labelled. `None` before calibration. With `sent=True`, the last picture actually sent with `classifier` `"ai"` (`None` if none). `FakeCamera` returns `None` for both.
+
 ### 2.5 `detect_move(fen: str, occupancy: str) -> dict` (pure function)
 Works out what move was made, given the **position before the move** and a **stable** occupancy after it. No camera or hardware access, so it can be unit-tested on a laptop.
 
@@ -294,6 +302,7 @@ Main uses it in two places:
 - `apt install python3-opencv` on Bookworm gives OpenCV 4.6 (old ArUco API, `cv2.aruco.detectMarkers`). `cv2.aruco.ArucoDetector` needs ≥ 4.7 (pip `opencv-python` in a venv created with `--system-site-packages`, so Picamera2 stays visible).
 - Lock exposure and white balance after warm-up (`AeEnable`/`AwbEnable` = False), so the classification doesn't drift when lighting changes.
 - Every frame, the squares' brightness is matched to the calibration frame through the black and white of the 4 ArUco markers (their places and levels are saved with the calibration), so the whole picture getting brighter or darker (room light, a screen's brightness) doesn't change the classes. A change in one place only (a shadow, an LED lighting a square) isn't corrected, and neither is anything with `manual_corners` (no markers). Calibration files from before this are ignored (`"calibrated": false`), so calibrate again.
+- With `camera.classifier` `"ai"`, a vision model reads the squares instead of the color classification (`checkmate/camera/ai_reader.py`). The camera still finds the board, which side is white and when the board is still; `get_observation()` keeps its shape. When the board has been still for `stable_time_s` and looks different from the board last read, the camera sends one picture: the board straightened with a1 at the bottom left, half a square of the frame around it, a grid, and each square's name in its top-left corner. The model answers `"."`, `"W"` or `"B"` for each of the 64 squares, and whether a hand or another object hides the board. Until the board as it is now has been read, `stable` is `false`, so the game loop waits as it does while a hand is over the board; an answer is dropped if anything moved meanwhile, and an obstructed picture waits for the next motion. `low_confidence` is empty. DeepSeek's JSON mode only promises valid JSON, so the answer is checked (all 64 squares, known values) and asked again when unusable. Reads failing for `camera.ai.give_up_s` make `get_observation()` return `CAMERA_NOT_READY` ("can't read the board with the AI: ...") until a read works again.
 
 ---
 
@@ -552,6 +561,9 @@ Chromium opens `http://127.0.0.1:8000/` in kiosk mode. The server only listens o
 | `GET` | `/api/state` | none | the current `state` object (5.3) | same data as over WebSocket, for debugging / first load |
 | `POST` | `/api/command` | JSON body = one command (5.5) | `200 {"ok": true}` or `400 {"ok": false, "error": "BAD_REQUEST" \| "NOT_ALLOWED", "message": "..."}` | send a command without WebSocket (testing with `curl`) |
 | `GET` | `/api/camera.jpg` | none | `image/jpeg` from `camera.get_debug_image()`, or `404` if no frame | camera-check screen |
+| `GET` | `/api/frame.jpg` | none | `image/jpeg` from `camera.get_frame_image()`, or `404` if no frame | the camera frame as it is |
+| `GET` | `/api/ai.jpg` | `?sent=1` optional | `image/jpeg` from `camera.get_ai_image()` (the current frame as the vision model would get it), with `?sent=1` the last picture sent; `404` before calibration / if none | the picture the vision model gets (2.8) |
+| `GET` | `/api/live` | none | an HTML page | `frame.jpg` and `ai.jpg` side by side, refreshed every 0.5 s (`?ms=` to change), and the last picture sent to the model |
 | `GET` | `/api/health` | none | `{"ok": true, "devices": {"camera": "ok", "engine": "ok", "led": "error"}}` | quick device check |
 
 Example with curl:
@@ -664,7 +676,7 @@ curl -X POST http://127.0.0.1:8000/api/command -H 'Content-Type: application/jso
 | `game_over` | game ended | `result`, `termination`, move list | `start_game`, `cancel` |
 | `error` | camera or engine failed | `message`, `devices` | `retry`, `calibrate`, `cancel` |
 
-`board_problem` can also be set in `human_turn` and `engine_move_pending` (illegal move or the computer's move played wrong). The phase stays the same; the UI shows a warning until it goes back to `null`.
+`board_problem` can also be set in `human_turn` and `engine_move_pending` (illegal move or the computer's move played wrong), once the board has stayed that way for 2.5 s: a capture or castling passes through positions that are no move yet. The phase stays the same; the UI shows a warning until it goes back to `null`.
 
 The main instruction follows `phase`, not a UI timer or locally predicted move. Only show “Your turn” in `human_turn`. Keep the confirmed board position visible during `engine_move_pending`; highlight the requested move without moving the on-screen pieces ahead of camera confirmation. Setup, promotion, connection loss, errors, and game-over instructions take priority over ordinary turn text.
 
@@ -732,7 +744,9 @@ human_turn
                   game over? ─▶ game_over, else ─▶ engine_thinking
     promotion  ─▶ promotion_choice
     no_change  ─▶ clear board_problem, stay
-    invalid    ─▶ board_problem = r.changed_squares, led.show(… "error"), stay
+    invalid    ─▶ if the board stays like this for 2.5 s (a capture or castling in two steps
+                  passes through such positions): board_problem = r.changed_squares,
+                  led.show(… "error"), stay; a problem already shown is updated at once
                   (the human fixes the board; the next stable observation is checked again)
   hint ─▶ hint = engine.get_hint(); led.show(hint_from / hint_to)
 
@@ -751,7 +765,8 @@ engine_move_pending
              both modes: clear old analysis, rate confirmed move, update rating/evaluation (5.3.1)
              game over? ─▶ game_over, else ─▶ human_turn
     no_change ─▶ stay (human hasn't moved yet)
-    anything else ─▶ board_problem = wrong squares, LEDs keep showing m plus "error" squares, stay
+    anything else ─▶ after the same 2.5 s: board_problem = wrong squares, LEDs keep showing m
+                     plus "error" squares, stay
 
 game_over
   led.clear(); wait for start_game or cancel
