@@ -45,7 +45,8 @@ def find_aruco_markers(frame):
 
 
 def board_corners(markers):
-    """Board corners [a1, h1, h8, a8]: of each marker, the corner closest to the middle of all 4."""
+    """One board corner per marker, in the markers' order: of each marker, the corner closest to
+    the middle of all 4. Which one is a1 is decided by calibrate_from_frame() from the pieces."""
     quads = [np.array(m, dtype=np.float32) for m in markers]
     center = np.mean([q.mean(axis=0) for q in quads], axis=0)
     result = []
@@ -56,8 +57,8 @@ def board_corners(markers):
 
 
 def find_aruco_corners(frame):
-    """Board corners [a1, h1, h8, a8] from the 4 ArUco markers placed just outside each board
-    corner. Returns None if any marker is missing.
+    """The 4 board corners from the ArUco markers placed just outside them (see board_corners()).
+    Returns None if any marker is missing.
     """
     markers = find_aruco_markers(frame)
     return None if markers is None else board_corners(markers)

@@ -1,5 +1,7 @@
 """Vision pipeline on synthetic images: calibration, classification, ArUco. No camera needed."""
 
+import itertools
+
 import chess
 import cv2
 import numpy as np
@@ -8,6 +10,7 @@ import pytest
 from checkmate.camera import START_FEN, detect_move, occupancy_from_fen
 from checkmate.camera.aruco import board_corners, find_aruco_corners, find_aruco_markers, marker_levels
 from checkmate.camera.vision import analyze_frame, calibrate_from_frame, square_rect
+from tests.camera import synthetic
 from tests.camera.synthetic import AFTER_E4, SKIN, START_OCC, expected_corners, render
 
 
@@ -53,6 +56,16 @@ def test_calibrate_fixes_mirrored_corners(shift):
     assert calib is not None
     assert _close(calib["corners_px"], expected_corners())
     assert calib["occupancy"] == START_OCC
+
+
+@pytest.mark.parametrize("ids", list(itertools.permutations(range(4))))
+def test_markers_in_any_corner(monkeypatch, ids):
+    # People can't read a marker's number, so any marker may sit at any corner; the pieces say
+    # which corner is a1.
+    monkeypatch.setattr(synthetic, "ARUCO_IDS", dict(zip(["a1", "h1", "h8", "a8"], ids)))
+    calib = _calibrate(render(START_OCC))
+    assert calib["occupancy"] == START_OCC
+    assert _close(calib["corners_px"], expected_corners(), tol=4.0)
 
 
 def test_calibrate_rejects_empty_board():

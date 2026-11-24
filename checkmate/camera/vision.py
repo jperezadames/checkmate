@@ -129,6 +129,12 @@ def _scatter(feats, centroids):
     return sum(float(np.sum((feats[i] - centroids[_shade(i)][START_OCC[i]]) ** 2)) for i in range(64))
 
 
+def _around_the_board(corners):
+    """The 4 corners in order around their middle, so any marker can sit in any corner."""
+    cx, cy = np.mean(corners, axis=0)
+    return sorted(corners, key=lambda p: np.arctan2(p[1] - cy, p[0] - cx))
+
+
 def _corner_orders(corners):
     """The 8 ways to read 4 corners as a1, h1, h8, a8: each rotation, as given and mirrored."""
     mirrored = [corners[0], corners[3], corners[2], corners[1]]
@@ -143,12 +149,13 @@ def calibrate_from_frame(frame, corners_px, markers_px=None):
     `markers_px` (from find_aruco_markers(), None with manual corners) is kept with their black
     and white lightness now, for match_lighting() on later frames.
 
-    Tries the 8 ways `corners_px` can map to a1, h1, h8, a8. Among those that pass
+    `corners_px` may come in any order. Tries the 8 ways they can map to a1, h1, h8, a8 going
+    around the board. Among those that pass
     _orientation_ok(), keeps the one whose squares fit their starting-position class best: a board
     mirrored along a diagonal mixes pieces and empty squares in every class, so it fits badly.
     Returns a calibration dict, or None if no order fits.
     """
-    corners = [list(map(float, c)) for c in corners_px]
+    corners = _around_the_board([list(map(float, c)) for c in corners_px])
     best = None
     for order in _corner_orders(corners):
         feats = square_features(warp_board(frame, order))
