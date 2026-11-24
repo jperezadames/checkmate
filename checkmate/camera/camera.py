@@ -6,9 +6,10 @@ import time
 import cv2
 
 from checkmate.camera import sources
+from checkmate.camera.ai_reader import AiClassifier, DeepSeekReader, annotate
 from checkmate.camera.aruco import board_corners, find_aruco_markers
 from checkmate.camera.calibration import load_calibration, save_calibration
-from checkmate.camera.motion import MotionDetector
+from checkmate.camera.motion import MotionDetector, shrink
 from checkmate.camera.vision import analyze_frame, calibrate_from_frame, draw_debug
 from checkmate.config import REPO_ROOT
 from checkmate.errors import err
@@ -16,6 +17,9 @@ from checkmate.errors import err
 # No new frame for this long means the camera stopped: get_observation() returns
 # CAMERA_NOT_READY, and start() reopens the camera (section 6, "retry").
 FRAME_TIMEOUT_S = 2.0
+
+# What tells empty, white and black squares apart (section 2.8).
+CLASSIFIERS = ("opencv", "ai")
 
 
 def _frame_size(frame):
@@ -39,7 +43,14 @@ class Camera:
         self.calibration_file = REPO_ROOT / config.get("calibration_file", "calibration.json")
         self.manual_corners = config.get("manual_corners")
         if self.manual_corners is not None and len(self.manual_corners) != 4:
-            raise ValueError("camera.manual_corners must be 4 [x, y] points: a1, h1, h8, a8")
+            raise ValueError("camera.manual_corners must be the 4 board corners as [x, y] points")
+        self.classifier = config.get("classifier", "opencv")
+        if self.classifier not in CLASSIFIERS:
+            raise ValueError(f"camera.classifier must be one of {CLASSIFIERS}, got {self.classifier!r}")
+        ai = config.get("ai") or {}
+        self._ai = AiClassifier(DeepSeekReader(ai), retry_s=float(ai.get("retry_s", 2.0)),
+                                give_up_s=float(ai.get("give_up_s", 15.0))) \
+            if self.classifier == "ai" else None
 
         self._lock = threading.Lock()
         self._motion = MotionDetector(float(config.get("stable_time_s", 0.5)))
@@ -69,6 +80,8 @@ class Camera:
             self._frame = self._warped = self._obs = None
             self._frame_ts = time.monotonic()  # counts as a frame, so the timeout starts now
             self._motion.reset()
+            if self._ai is not None:
+                self._ai.reset()
         self._stop = threading.Event()
         self._thread = threading.Thread(target=self._run, args=(self._source, self._stop),
                                         name="camera", daemon=True)
@@ -80,6 +93,8 @@ class Camera:
             self._stop.set()
             self._thread.join(timeout=2.0)
             self._thread = None
+        if self._ai is not None:
+            self._ai.close()
         self._release_source()
 
     def _release_source(self):
@@ -118,6 +133,8 @@ class Camera:
                 self._calib = saved
                 self._warped = self._obs = None
                 self._motion.reset()
+                if self._ai is not None:
+                    self._ai.reset()
             return {
                 "ok": True,
                 "corners_px": calib["corners_px"],
@@ -160,13 +177,20 @@ class Camera:
             with self._lock:
                 if self._calib is not calib:  # recalibrated while this frame was analyzed
                     continue
+                stable = self._motion.update(warped, ts)
+                if self._ai is not None:
+                    # The model's read replaces the color classification; until it has read the
+                    # board as it is now, the observation isn't stable.
+                    read, current = self._ai.update(frame, calib["corners_px"], shrink(warped), stable, ts)
+                    occupancy = read or occupancy
+                    stable, low_confidence = stable and current, []
                 self._seq += 1
                 self._warped = warped
                 self._obs = {
                     "ok": True,
                     "ts": ts,
                     "seq": self._seq,
-                    "stable": self._motion.update(warped, ts),
+                    "stable": stable,
                     "occupancy": occupancy,
                     "low_confidence": low_confidence,
                 }
@@ -196,7 +220,36 @@ class Camera:
             return "no frame processed yet"
         if _stale(self._obs["ts"]):
             return f"no frames from the camera for {FRAME_TIMEOUT_S:g} s"
+        if self._ai is not None:
+            return self._ai.problem(time.monotonic())
         return None
+
+    def get_frame_image(self):
+        """JPEG of the latest camera frame as it is, or None before the first frame."""
+        try:
+            with self._lock:
+                frame = self._frame
+            if frame is None:
+                return None
+            ok, buf = cv2.imencode(".jpg", frame)
+            return buf.tobytes() if ok else None
+        except Exception:
+            return None
+
+    def get_ai_image(self, sent=False):
+        """JPEG of the picture the vision model gets (section 2.8): the current frame straightened,
+        grayed and labelled, or with sent=True the last picture actually sent (classifier "ai").
+        None before calibration, or if nothing was sent."""
+        try:
+            if sent:
+                return self._ai.last_picture if self._ai is not None else None
+            with self._lock:
+                frame, calib = self._frame, self._calib
+            if frame is None or calib is None or _frame_size(frame) != calib["frame_size"]:
+                return None
+            return annotate(frame, calib["corners_px"])
+        except Exception:
+            return None
 
     def get_debug_image(self):
         """JPEG of the warped board with the grid and detections; raw frame if not calibrated."""

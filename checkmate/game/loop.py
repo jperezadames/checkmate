@@ -48,11 +48,22 @@ WINNERS = {"1-0": "white", "0-1": "black"}
 
 
 class DebugImageRequest:
-    """For /api/camera.jpg: the server puts one on the command queue and waits for `reply`, so
-    camera.get_debug_image() is called from the loop thread like every other module call."""
+    """For the camera pictures under /api (camera.jpg, frame.jpg, ai.jpg): the server puts one on
+    the command queue and waits for `reply`, so the camera is called from the loop thread like
+    every other module call. `kind` is a key of IMAGE_KINDS."""
 
-    def __init__(self):
+    def __init__(self, kind="board"):
+        self.kind = kind
         self.reply = Future()
+
+
+# DebugImageRequest.kind -> how the camera makes that picture (section 2.4)
+IMAGE_KINDS = {
+    "board": lambda camera: camera.get_debug_image(),
+    "frame": lambda camera: camera.get_frame_image(),
+    "ai": lambda camera: camera.get_ai_image(),
+    "ai_sent": lambda camera: camera.get_ai_image(sent=True),
+}
 
 
 def run_game_loop(camera, engine, led, commands, broadcast, stop_event):
@@ -130,7 +141,7 @@ class GameLoop:
             except queue.Empty:
                 break
             if isinstance(item, DebugImageRequest):
-                item.reply.set_result(self.camera.get_debug_image())
+                item.reply.set_result(IMAGE_KINDS[item.kind](self.camera))
             else:
                 self.handle(item)
         PHASE_STEPS.get(self.phase, GameLoop._wait)(self)

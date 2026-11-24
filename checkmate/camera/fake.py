@@ -44,5 +44,11 @@ class FakeCamera:
     def get_debug_image(self):
         return None
 
+    def get_frame_image(self):
+        return None
+
+    def get_ai_image(self, sent=False):
+        return None
+
     def close(self) -> None:
         self.started = False

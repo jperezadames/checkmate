@@ -412,9 +412,9 @@ def test_uncalibrated_camera_then_calibrate():
 
 def test_debug_image_request_is_answered_in_the_loop():
     game = Game()
-    request = DebugImageRequest()
-    game.step(request)
-    assert request.reply.result(timeout=0) is None  # FakeCamera has no image
+    requests = [DebugImageRequest(kind) for kind in ("board", "frame", "ai", "ai_sent")]
+    game.step(*requests)
+    assert all(r.reply.result(timeout=0) is None for r in requests)  # FakeCamera has no image
 
 
 @pytest.mark.parametrize("move, lit", [
